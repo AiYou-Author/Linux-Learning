@@ -1634,28 +1634,1109 @@ sudo arm-linux-gnueabi-gcc hello.c -o hello_static --static
 
 
 1. 预处理hello.c,主要是处理程序里面的文件包含、处理宏定义、条件编译。
-
 2. 把c文件编译成为汇编文件(.s)，其中进行了词法分析，语法分析，语义分析、生成中间代码、对代码进行优化等工作。
-
 3. 把汇编文件(.s)编译成可重定位文件(.o)。
-
 4. 把可重定位文件(.o)链接成为可执行文件，其中链接可分为静态链接和动态链接
 
    - 静态链接:在编译阶段就会把所有用到的库打包到自己的可执行程序中,其优点是具有较好的兼容性，不依赖外部环境，但是生成的程序比较大。
 
    - 动态链接:在应用程序运行时，链接器去加载外部的共享库，并完成共享库和动态编译程序之间的链接。不同的程序可以共用代码库，节省内存空间。
-
 5. 控制台输入./hello命令后，Shell会创建一个新的进程来执行该程序。fork()函数就是用于创建一个新的进程的。这里的进程可以先简单理解为程序的容器。
-
 6. exeve()函数可以理解为向上一步新建的进程，填充一个可执行程序(hello)。
-
 7. sys_execve()函数为linux系统调用,被exeve()函数调用，这里的系统调用可以理解为是操作系统系统开放给用户的最底层接口。
 8. do_exeve()函数是sys_execve()函数的核心。
 9. load_elf_binary()函数会去文件系统中读取hello程序到内存，然后判断它是否是动态链接的可执行程序，如果不是，则进一步判断是否是静态链接的文件。
-
 10. ld-linux-xx.so是glibc库中的动态连接器。如果hello程序是动态链接程序，该动态链接器会去加载共享库，并完成共享库和程序的链接工作， 然后准备真正开始执行hell程序。
 11. 相反，如果hello程序是静态编译的程序，则无需再加载链接共享库，直接开始准备执行hello程序。
     - 第10和11步分别执行之后.都会开始执行hello程序，_start是程序的真正入口，而该符号在glibc中。也就是说程序的真正入口在glibc。
 12. __libc_start_main()也是glibc中的函数，用于在执行用户程序前进行一些初始化工作。
 13. 调用用户程序中的mian()函数，开始执行printf打印函数。
 14. 程序执行完了之后，调用glibc库中的_exit()函数，来结束当前进程
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+## 2.5 Makefile
+
+
+
+### Makefile三要素是什么?
+
+目标、依赖、命令
+
+
+
+### 三要素的关系
+
+目标：依赖的文件或是其他目标
+
+<tab>命令1
+
+<tab>命令2
+
+
+
+
+
+#### make和Makefile是什么关系？
+
+make工具:找出修改过的文件，根据依赖关系，找出受影响的相关文件，最后按照规则单独编译这些文件。
+
+Makefile文件:记录依赖关系和编译规则。
+
+![未找到图片](https://s2.loli.net/2022/05/30/dlP4sw5Er1nZgpB.png)
+
+
+
+
+
+创建一个include文件，在include中添加头文件
+
+```shell
+aiyou@ubuntu:~/makefile/part_1$ sudo vi Makefile
+
+vi:
+targeta:targetb targetc
+	echo "targeta"
+
+targetb:
+	echo "targetb"
+
+targetc:
+	echo "targetc"
+
+
+aiyou@ubuntu:~/makefile/part_1$ sudo make
+echo "targetb"
+targetb
+echo "targetc"
+targetc
+echo "targeta"
+targeta
+aiyou@ubuntu:~/makefile/part_1$ sudo make targetb
+echo "targetb"
+targetb
+aiyou@ubuntu:~/makefile/part_1$ sudo touch targetb
+aiyou@ubuntu:~/makefile/part_1$ sudo make targetb
+make: “targetb”已是最新。
+
+```
+
+
+
+### 伪目标
+
+​	前面我们在Makefile中编写的目标，在make看来其实都是目标文件，例如make在执行 的时候由于在目录找不到targeta文件，所以每次make targeta的时候，它都会去执行targeta的命令，期待执行后能得到名为targeta的 同名文件。如果目录下真的有targeta、targetb、targetc的文件，即假如目标文件和依 赖文件都存在且是最新的，那么make targeta就不会被正常执行了，这会引起误会。
+
+​	为了避免这种情况，Makefile使用“.PHONY”前缀来区分目标代号和目标文件，并且这种目 标代号被称为“伪目标”，phony单词翻译过来本身就是假的意思。
+
+​	也就是说，只要我们不期待生成目标文件，就应该把它定义成伪目标
+
+
+
+.PHONY:可以指定伪目标
+
+```shell
+#在Makefile文件前加入.PHONY:targetb
+aiyou@ubuntu:~/makefile/part_1$ sudo make targetb
+echo "targetb"
+targetb
+```
+
+
+
+
+
+### Makefile管理项目
+
+```shell
+sudo vim mp3.c
+```
+
+```c
+#include<stdio.h>
+
+void play()
+{
+        printf("Play the music!\r\n");
+}
+
+void stop()
+{
+        printf("Stop the music!\r\n");
+}
+```
+
+```shell
+sduo vim main.c
+```
+
+```c
+#include<stdio.h>
+
+int main()
+{
+        play();
+        stop();
+        return 0;
+}
+```
+
+```shell
+sudo vim Makefile
+
+vim:
+mp3:main.o mp3.o
+	gcc main.o mp3.o -o mp3
+main.o:
+	gcc -c main.c -o main.o
+mp3.o:
+	gcc -c mp3.c -o mp3.o
+	
+sudo make
+./mp3
+```
+
+
+
+### 默认规则
+
+![未找到图片05|](https://s2.loli.net/2022/05/30/uqKjiTVeShMW18s.png)
+
+.o文件默认使用.c文件来进行编译
+
+
+
+
+
+
+
+### Makefile的变量、模式匹配
+
+#### 变量
+
+##### 系统变量和自定义变量
+
+```shell
+sudo vim Makefile_test
+
+vim:
+A?=456			#?=,空赋值，只有当变量为空时才可以赋值
+A+=123			#+=,追加赋值，此时A输出为“456 123”
+B=$(A)			#=,延迟赋值
+B:=$(A)			#:=,立即赋值
+.PHONY:all
+
+all:
+	echo "$(CC)"	#输出系统变量
+	echo "$(B)"
+	
+sudo make -f Makefile_test
+```
+
+```shell
+VAR_A = FILEA
+VAR_B = $(VAR_A)
+VAR_C := $(VAR_A)
+VAR_A += FILEB
+VAR_D ?= FILED
+.PHONY:check
+check:
+   @echo "VAR_A:"$(VAR_A)
+   @echo "VAR_B:"$(VAR_B)
+   @echo "VAR_C:"$(VAR_C)
+   @echo "VAR_D:"$(VAR_D)
+```
+
+执行完make命令 后，只有VAR_C是FILEA。这是因为VAR_B采用的延时赋值，只有当调用时，才会进行 赋值。当调用VAR_B时，VAR_A的值已经被修改为FILEA FILEB，因此VAR_B的变量值也就等于FILEA FILEB
+
+
+
+
+
+
+
+
+
+
+
+##### 自动化变量
+
+```shell
+sudo vim Makefile_test
+
+vim:
+.PHONY:all
+
+all:targeta targetb
+        echo "$<"  	#输出第一个依赖文件
+        echo "$^"	#输出全部的依赖文件
+        echo "$@"	#输出目标
+
+targeta:
+
+targetb:
+
+aiyou@ubuntu:~/makefile/part_3$ sudo make -f Makefile_test 
+echo "targeta"
+targeta
+```
+
+| 符号 | 意义                                           |
+| ---- | ---------------------------------------------- |
+| $@   | 匹配目标文件                                   |
+| $%   | 与$@类似，但$%仅匹配“库”类型的目标文件         |
+| $<   | 依赖中的第一个目标文件                         |
+| $^   | 所有的依赖目标，如果依赖中有重复的，只保留一份 |
+| $+   | 所有的依赖目标，即使依赖中有重复的也原样保留   |
+| $?   | 所有比目标要新的依赖目标                       |
+
+
+
+
+
+
+
+
+
+#### 模式匹配
+
+```makefile
+CC=gcc
+TARGET=mp3
+OBJS=main.o mp3.o
+
+$(TARGET):$(OBJS)
+        $(CC) $^ -o $@
+
+main.o:
+        $(CC) -c main.c -o main.o
+
+mp3.o:
+        $(CC) -c mp3.c -o mp3.o
+.PHONY:clean
+clean:
+        rm mp3
+```
+
+
+
+
+
+
+
+%:匹配任意多个非空字符
+
+```makefile
+CC=gcc
+TARGET=mp3
+OBJS=main.o mp3.o
+
+$(TARGET):$(OBJS)
+        $(CC) $^ -o $@
+
+#main.o:
+#       $(CC) -c main.c -o main.o
+
+#mp3.o:
+#       $(CC) -c mp3.c -o mp3.o
+
+%.o:%.c
+       $(CC) -c $^ -o $@
+
+
+.PHONY:clean
+clean:
+        rm mp3
+
+```
+
+
+
+#### Makefile条件分支
+
+```
+ifeq (var1,var2)
+...
+else
+...
+endif
+```
+
+```
+ifneq (var1,var2)
+...
+else
+...
+endif
+```
+
+```makefile
+ARCH ?= x86
+
+ifeq ($(ARCH),x86)
+        CC=gcc
+else
+        CC=arm-linux-gnueabihf-gcc
+endif
+TARGET=mp3
+OBJS=main.o mp3.o
+
+$(TARGET):$(OBJS)
+        $(CC) $^ -o $@
+
+#main.o:
+#       $(CC) -c main.c -o main.o
+
+#mp3.o:
+#       $(CC) -c mp3.c -o mp3.o
+
+#%.o:%.c
+#       $(CC) -c $^ -o $@
+
+
+.PHONY:clean
+clean:
+        rm mp3
+```
+
+
+
+#### Makefile 常用函数
+
+**1.patsbust**:
+
+模式字符串替换
+
+```
+$(patsubst 匹配规则, 替换规则, 输入的字符串)
+```
+
+```shell
+$(patsubst %.c, build_dir/%.o, hello_main.c )
+#函数的输出为：
+build_dir/hello_main.o
+#执行如下函数
+$(patsubst %.c, build_dir/%.o, hello_main.xxx )
+#由于hello_main.xxx不符合匹配规则"%.c"，所以函数没有输出
+```
+
+```shell
+vim:
+.PHONY: all
+        
+all:
+        echo "$(patsubst  %.c,%.o,x.c.c bar.c)"
+        
+aiyou@ubuntu:~/makefile/part_5$ sudo make -f Makefile_function 
+echo "x.c.o bar.o"
+x.c.o bar.o
+```
+
+
+
+
+
+**2.notdir**:
+
+notdir函数用于去除文件路径中的目录部分
+
+```
+$(notdir 文件名)
+```
+
+例如输入参数“./sources/hello_func.c”，函数执行后 的输出为“hell_func.c”，也就是说它会把输入中的“./sources/”路径部分去掉，保留文件名
+
+
+
+
+
+**3.wildcard**:
+
+wildcard函数用于获取文件列表，并使用空格分隔开
+
+```shell
+#在sources目录下有hello_func.c、hello_main.c、test.c文件
+#执行如下函数
+$(wildcard sources/*.c)
+#函数的输出为：
+sources/hello_func.c sources/hello_main.c sources/test.c
+```
+
+
+
+
+
+**4.foreach**:
+
+$(foreach VAR,LIST,TEXT)
+
+dirs := a b c d  
+files := $(foreach dir,$(dirs),$(wildcard $(dir)/*))
+
+```makefile
+dirs:= a b c d
+files:= $(foreach dir,$(dirs),$(wildcard $(dir)/*))
+
+.PHONY: all
+        
+all:
+        echo "$(files)"
+```
+
+```makefile
+ARCH ?= x86
+
+ifeq ($(ARCH),x86)
+        CC=gcc
+else
+        CC=arm-linux-gnueabihf-gcc
+endif
+
+
+
+TARGET=mp3
+BUILD_DIR=build
+SRC_DIR=module1 module2
+
+SOURCES=$(foreach dir,$(SRC_DIR),$(wildcard $(dir)/*.c))
+OBJS=$(patsubst %.c,$(BUILD_DIR)/%.o,$(notdir $(SOURCES)))
+VPATH=$(SRC_DIR)
+
+
+$(BUILD_DIR)/$(TARGET):$(OBJS)
+        $(CC) $^ -o $@
+
+#main.o:
+#       $(CC) -c main.c -o main.o
+
+#mp3.o:
+#       $(CC) -c mp3.c -o mp3.o
+
+$(BUILD_DIR)/%.o:%.c | create_build
+        $(CC) -c $^ -o $@
+
+
+
+.PHONY:clean create_build
+clean:
+        rm -r $(BUILD_DIR)
+create_build:
+        mkdir -p $(BUILD_DIR)
+```
+
+#### 解决头文件依赖
+
+1、写一个头文件，并把头文件添加到编译器的头文件路径中。
+
+gcc -I +"头文件"
+
+2、实时检查头文件的更新情况，一旦头文件发生变化，应该要重新编译所有相关文件。
+
+gcc -MM 
+
+```makefile
+ARCH ?= x86
+
+ifeq ($(ARCH),x86)
+        CC=gcc
+else
+        CC=arm-linux-gnueabihf-gcc
+endif
+
+
+
+TARGET=mp3
+BUILD_DIR=build
+SRC_DIR=module1 module2
+INC_DIR=include
+CFLAGS=$(patsubst %,-I%,$(INC_DIR))
+INCLUDES=$(foreach dir,$(INC_DIR),$(wildcard $(dir)/*.h))
+
+SOURCES=$(foreach dir,$(SRC_DIR),$(wildcard $(dir)/*.c))
+OBJS=$(patsubst %.c,$(BUILD_DIR)/%.o,$(notdir $(SOURCES)))
+VPATH=$(SRC_DIR)
+
+
+$(BUILD_DIR)/$(TARGET):$(OBJS)
+        $(CC) $^ -o $@
+
+#main.o:
+#       $(CC) -c main.c -o main.o
+
+#mp3.o:
+#       $(CC) -c mp3.c -o mp3.o
+
+$(BUILD_DIR)/%.o:%.c $(INCLUDES) | create_build
+        $(CC) -c $< -o $@ $(CFLAGS)
+
+
+
+.PHONY:clean create_build
+clean:
+        rm -r $(BUILD_DIR)
+create_build:
+        mkdir -p $(BUILD_DIR)
+
+```
+
+
+
+
+
+
+
+
+
+
+
+## 2.6文件操作与系统调用
+
+
+
+
+
+### 1.存储设备文件系统
+
+Windows下的FAT32、NTFS、exFAT
+
+Linux下常用的ext2、ext3和ext4的类型格式
+
+- FAT32格式：兼容性好， STM32等MCU也可以通过Fatfs支持FAT32文件系统，大部分SD卡或U盘出厂 默认使用的就是FAT32文件系统。它的主要缺点是技术老旧，单个文件不能超过4GB，非日志型文件系统。
+- NTFS格式：单个文件最大支持256TB、支持长文件名、服务器文件管理权限等，而且NTFS是日志型 文件系统。但由于是日志型文件系统，会记录详细的读写操作，相对来说会加快FLASH存储器的损 耗。文件系统的日志功能是指，它会把文件系统的操作记录在磁盘的某个分区，当系统发生故障时，能够 尽最大的努力保证数据的完整性。
+- exFAT格式：基于FAT32改进而来，专为FLASH介质的存储器 设计（如SD卡、U盘），空间浪费少。单个文件最大支持16EB，非日志文件系统。
+- ext2格式：简单，文件少时性能较好，单个文件不能超过2TB。非日志文件系统。
+- ext3格式：相对于ext2主要增加了支持日志功能。
+- ext4格式：从ext3改进而来，ext3实际是ext4的子集。它支持1EB的分区，单个文件最大支 持16TB，支持无限的子目录数量，使用延迟分配策略优化了文件的数据块分配，允许自主控制是否使用日志的功能。
+- jffs2和yaffs2格式： jffs2和yaffs2是专为FLASH类型存储器设计的文件 系统，它们针对FLASH存储器的特性加入了擦写平衡和掉电保护等特性。由于Nor、NAND FLASH类 型存储器的存储块的擦写次数是有限的（通常为10万次），使用这些类型的文件系统可以减少对存储器的损耗。
+
+### 2.伪文件系统
+
+#### procfs文件系统
+
+```shell
+#查看CPU信息
+cat /proc/cpuinfo
+#查看proc目录
+ls /proc
+```
+
+![未找到图片04](https://s2.loli.net/2022/06/01/xDdQ4cgoFV7MjrH.png)
+
+/proc包含了非常多以数字命名的目录，这些数字就是进程的PID号
+
+| 文件名      | 作用                                                         |
+| ----------- | ------------------------------------------------------------ |
+| pid*        | *表示的是进程的 PID 号，系统中当前运行的每一个进程都有对应的一个目录，用于记录进程所有相关信息。对于操作系统来说，一个应用程序就是一个进程 |
+| self        | 该文件是一个软链接，指向了当前进程的目录，通过访问/proc/self/目录来获取当前进程的信息，就不用每次都获取pid |
+| thread-self | 该文件也是一个软链接，指向了当前线程，访问该文件，等价于访问“当前进程pid/task/当前线程tid”的内容。。一个进程，可以包含多个线程，但至少需要一个进程，这些线程共同支撑进程的运行。 |
+| version     | 记录了当前运行的内核版本，通常可以使用命令“uname –r”         |
+| cpuinfo     | 记录系统中CPU的提供商和相关配置信息                          |
+| modules     | 记录了目前系统加载的模块信息                                 |
+| meminfo     | 记录系统中内存的使用情况，free命令会访问该文件，来获取系统内存的空闲和已使用的数量 |
+| filesystems | 记录内核支持的文件系统类型，通常mount一个设备时，如果没有指定文件系统并且它无法确定文件系统类型时，mount会尝试包含在该文件中的文件系统，除了那些标有“nodev”的文件系统。 |
+
+```shell
+#在主机上执行如下命令，查看bash的PID号
+ps
+```
+
+```shell
+#在主机上执行如下命令
+#把目录中的数字改成自己bash进程的pid号
+ls /proc/3042
+```
+
+![未找到图片06|](https://s2.loli.net/2022/06/01/AQhXsGFBp5ywc9J.png)
+
+| 文件名    | 文件内容                                                     |
+| --------- | ------------------------------------------------------------ |
+| cmdline   | 只读文件，记录了该进程的命令行信息，如命令以及命令参数       |
+| comm      | 记录了进程的名字                                             |
+| environ   | 进程使用的环境变量                                           |
+| exe       | 软连接文件，记录命令存放的绝对路径                           |
+| fd        | 记录进程打开文件的情况，以文件描述符作为目录名               |
+| fdinfo    | 记录进程打开文件的相关信息，包含访问权限以及挂载点，由其文件描述符命名。 |
+| io        | 记录进程读取和写入情况                                       |
+| map_files | 记录了内存中文件的映射情况，以对应内存区域起始和结束地址命名 |
+| maps      | 记录当前映射的内存区域，其访问权限以及文件路径。             |
+| stack     | 记录当前进程的内核调用栈信息                                 |
+| status    | 记录进程的状态信息                                           |
+| syscall   | 显示当前进程正在执行的系统调用。第一列记录了系统调用号       |
+| task      | 记录了该进程的线程信息                                       |
+| wchan     | 记录当前进程处于睡眠状态，内核调用的相关函数                 |
+
+```shell
+#在主机上执行如下命令
+#把目录中的数字改成自己bash进程的pid号
+cat /proc/3042/comm
+```
+
+![未找到图片07|](https://s2.loli.net/2022/06/01/W326QO8wVxgCbuE.png)
+
+
+
+
+
+
+
+#### sysfs文件系统
+
+procfs是“任务管理器”，那sysfs同procfs一样，也是一 个伪文件系统
+
+sys目录下的文件/文件夹向用户提供了一些关于设备、内核模块、文件系统以及其他内核组件的信息
+
+![未找到图片08|](https://s2.loli.net/2022/06/01/UrPef1csHx4XFuR.jpg)
+
+| 文件名  | 作用                                                         |
+| ------- | ------------------------------------------------------------ |
+| block   | 记录所有在系统中注册的块设备，这些文件都是符号链接，都指向了/sys/devices目录。 |
+| bus     | 该目录包含了系统中所有的总线类型，每个文件夹都是以每个总线的类型来进行命名。 |
+| class   | 包含了所有在系统中注册的设备类型，如块设备，声卡，网卡等。文件夹下的文件同样也是一些链接文件，指向了/sys/devices目录。 |
+| devices | 包含了系统中所有的设备，到跟设备有关的文件/文件夹，最终都会指向该文件夹。 |
+| module  | 该目录记录了系统加载的所有内核模块，每个文件夹名以模块命名   |
+| fs      | 包含了系统中注册文件系统                                     |
+
+#### 
+
+
+
+
+
+### 3.虚拟文件系统
+
+![未找到图片09|](https://s2.loli.net/2022/06/01/4UAhbsBnrfVo6lz.png)
+
+上图解构如下：
+
+- 应用层指用户编写的程序，如我们的hello.c。
+- GNU C库（glibc）即C语言标准库，例如在编译器章节介绍的libc.so.6文件，它 包含了printf、malloc，以及本章使用的fopen、fread、fwrite等文件操作函数。
+- 用户程序和glibc库都是属于用户空间的，本质都是用户程序。
+- 应用层的程序和glibc可能会调用到“系统调用层（SCI）”的函数，这些函数 是Linux内核对外提供的函数接口，用户通过这些函数向系统申请操作。例如，C库 的printf函数使用了系统的vsprintf和write函数，C库的fopen、fread、fwrite分别 调用了系统的open、read、w rite函数，具体可以阅读glibc的源码了解。
+- 由于文件系统种类非常多，跟文件操作相关的open、read、write等函数经过虚 拟文件系统层，再访问具体的文件系统。
+
+​	为了使不同的文件系统共存， Linux内核在用户层与具体文件 系统之前增加了虚拟文件系统中间层，它对复杂的系统进行抽象化，对用户提供了统 一的文件操作接口。
+
+
+
+
+
+
+
+### 4.Linux系统调用
+
+​	系统调用（System Call）是操作系统提供给用 户程序调用的一组“特殊”函数接口API，文件操作就是其中一种类型。
+
+- 进程控制：如fork、clone、exit 、setpriority等创建、中止、设置进程优先级的操作。
+- 文件系统控制：如open、read、write等对文件的打开、读取、写入操作。
+- 系统控制：如reboot、stime、init_module等重启、调整系统时间、初始化模块的系统操作。
+- 内存管理：如mlock、mremap等内存页上锁重、映射虚拟内存操作。
+- 网络管理：如sethostname、gethostname设置或获取本主机名操作。
+- socket控制：如socket、bind、send等进行TCP、UDP的网络通讯操作。
+- 用户管理：如setuid、getuid等设置或获取用户ID的操作。
+- 进程间通信：包含信号量、管道、共享内存等操作。
+
+
+
+
+
+#### 常用文件操作系统（C标准库）
+
+##### 1. fopen函数
+
+fopen库函数用于打开或创建文件，返回相应的文件流。它的函数原型如下：
+
+```c
+#include <stdio.h>
+FILE *fopen(const char *pathname, const char *mode);
+```
+
+- pathname参数用于指定要打开或创建的文件名。
+- mode参数用于指定文件的打开方式，注意该参数是一个字符串，输入时需要带双引号：
+- “r”：以只读方式打开，文件指针位于文件的开头。
+- “r+”：以读和写的方式打开，文件指针位于文件的开头。
+- “w”：以写的方式打开，不管原文件是否有内容都把原内容清空掉，文件指针位于文件的开头。
+- “w+”： 同上，不过当文件不存在时，前面的“w”模式会返回错误，而此处的“w+”则会创建新文件。
+- “a”：以追加内容的方式打开，若文件不存在会创建新文件，文件指针位于文件的末尾。与“w+”的区别是它不会清空原文件的内容而是追加。
+- “a+”：以读和追加的方式打开，其它同上。
+- fopen的返回值是FILE类型的文件文件流，当它的值不为NULL时表示正常，后续的fread、fwrite等函数可通过文件流访问对应的文件。
+
+##### 2. fread函数
+
+fread库函数用于从文件流中读取数据。它的函数原型如下：
+
+```c
+#include <stdio.h> 
+size_t fread(void *ptr, size_t size, size_t nmemb, FILE *stream); 
+```
+
+
+
+stream是使用fopen打开的文件流，fread通过它指定要访问的文件，它从该文件中读取nmemb项 数据，每项的大小为size，读取到的数据会被存储在ptr指向的数组中。fread的返回值为成功读取的项数（项的单位为size）。
+
+##### 3. fwrite函数
+
+fwrite库函数用于把数据写入到文件流。它的函数原型如下：
+
+```c
+#include <stdio.h> 
+size_t fwrite(void *ptr, size_t size, size_t nmemb, FILE *stream); 
+```
+
+它的操作与fread相反，把ptr数组中的内容写入到stream文件流，写入的项数为nmemb，每项 大小为size，返回值为成功写入的项数（项的单位为size）。
+
+
+
+##### 4. fclose函数
+
+fclose库函数用于关闭指定的文件流，关闭时它会把尚未写到文件的内容都写出。因为标准 库会对数据进行缓冲，所以需要使用fclose来确保数据被写出。它的函数原型如下：
+
+```
+#include <unistd.h> 
+int close(int fd); 
+```
+
+
+
+##### 5. fflush函数
+
+fflush函数用于把尚未写到文件的内容立即写出。常用于确保前面操作的数据被写 入到磁盘上。fclose函数本身也包含了fflush的操作。fflush的函数原型如下：
+
+```c
+#include <stdio.h> 
+int fflush(FILE *stream); 
+```
+
+
+
+##### 6. fseek函数
+
+fseek函数用于设置下一次读写函数操作的位置。它的函数原型如下：
+
+```c
+#include <stdio.h> 
+int fseek(FILE *stream, long offset, int whence); 
+```
+
+其中的offset参数用于指定位置，whence参数则定义了offset的意义，whence的可取值如下：
+
+- SEEK_SET：offset是一个绝对位置。
+- SEEK_END：offset是以文件尾为参考点的相对位置。
+- SEEK_CUR：offset是以当前位置为参考点的相对位置。
+
+##### 实验代码分析
+
+```c
+#include <stdio.h>
+#include <string.h>
+
+//要写入的字符串
+const char buf[] = "filesystem_test:Hello World!\n";
+//文件描述符
+FILE *fp;
+char str[100];
+
+
+int main(void)
+{
+   //创建一个文件
+   fp = fopen("filesystem_test.txt", "w+");
+   //正常返回文件指针
+   //异常返回NULL
+   if(NULL == fp){
+      printf("Fail to Open File\n");
+      return 0;
+   }
+   //将buf的内容写入文件
+   //每次写入1个字节，总长度由strlen给出
+   fwrite(buf, 1, strlen(buf), fp);
+
+   //写入Embedfire
+   //每次写入1个字节，总长度由strlen给出
+   fwrite("Embedfire\n", 1, strlen("Embedfire\n"),fp);
+
+   //把缓冲区的数据立即写入文件
+   fflush(fp);
+
+   //此时的文件位置指针位于文件的结尾处，使用fseek函数使文件指针回到文件头
+   fseek(fp, 0, SEEK_SET);
+
+   //从文件中读取内容到str中
+   //每次读取100个字节，读取1次
+   fread(str, 100, 1, fp);
+
+   printf("File content:\n%s \n", str);
+
+   fclose(fp);
+
+   return 0;
+}
+```
+
+#### 文件操作（系统调用）
+
+Linux提供的文件操作系统调用常用的有open、write、read、lseek、close等。
+
+##### 1. open函数
+
+```C
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+int open(const char *pathname, int flags);
+int open(const char *pathname, int flags, mode_t mode);
+```
+
+Linux使用open函数来打开文件，并返回该文件对应的文件描述符。函数参数的具体说明如下：
+
+- pathname：要打开或创建的文件名；
+- flag：指定文件的打开方式，具体有以下参数，见下表 flag参数值。
+
+表 flag参数值
+
+| 标志位   | 含义                                                     |
+| -------- | -------------------------------------------------------- |
+| O_RDONLY | 以只读的方式打开文件，该参数与O_WRONLY和O_RDWR只能三选一 |
+| O_WRONLY | 以只写的方式打开文件                                     |
+| O_RDWR   | 以读写的方式打开文件                                     |
+| O_CREAT  | 创建一个新文件                                           |
+| O_APPEND | 将数据写入到当前文件的结尾处                             |
+| O_TRUNC  | 如果pathname文件存在，则清除文件内容                     |
+
+主模式：
+
+- O_RDONLY:只读模式
+- O_WRONLY:只写模式
+- O_RDWR:读写，模式
+
+副模式：
+
+- O_CREAT:当文件不存在，需要去创建文件
+- O_APPEND:追加模式
+- O_DIRECT:直接IO模式
+- O_SYNC:同步模式
+- O_NOBLOCK:非阻塞模式
+
+
+
+C库函数fopen的mode参数与系统调用open的flags参数有如下表中的等价关系。
+
+表 fopen的mode与open的flags参数关系
+
+| fopen的mode参数 | open的flags参数                 |
+| --------------- | ------------------------------- |
+| r               | O_RDONLY                        |
+| w               | O_WRONLY \| O_CREAT \| O_TRUNC  |
+| a               | O_WRONLY \| O_CREAT \| O_APPEND |
+| r+              | O_RDWR                          |
+| w+              | O_RDWR \| O_CREAT \| O_TRUNC    |
+| a+              | O_RDWR \| O_CREAT \| O_APPEND   |
+
+- mode：当open函数的flag值设置为O_CREAT时，必须使用mode参数来设置文件 与用户相关的权限。mode可用的权限如下表所示，表中各个参数可使用“| ”来组 合。
+
+表 文件权限
+
+| \          | 标志位  | 含义                                     |
+| ---------- | ------- | ---------------------------------------- |
+| 当前用户   | S_IRUSR | 用户拥有读权限                           |
+| \          | S_IWUSR | 用户拥有写权限                           |
+| \          | S_IXUSR | 用户拥有执行权限                         |
+| \          | S_IRWXU | 用户拥有读、写、执行权限                 |
+| 当前用户组 | S_IRGRP | 当前用户组的其他用户拥有读权限           |
+| \          | S_IWGRP | 当前用户组的其他用户拥有写权限           |
+| \          | S_IXGRP | 当前用户组的其他用户拥有执行权限         |
+| \          | S_IRWXG | 当前用户组的其他用户拥有读、写、执行权限 |
+| 其他用户   | S_IROTH | 其他用户拥有读权限                       |
+| \          | S_IWOTH | 其他用户拥有写权限                       |
+| \          | S_IXOTH | 其他用户拥有执行权限                     |
+| \          | S_IROTH | 其他用户拥有读、写、执行权限             |
+
+
+
+
+
+##### 2. read函数
+
+```C
+#include <unistd.h>
+ssize_t read(int fd, void *buf, size_t count);
+```
+
+read函数用于从文件中读取若干个字节的数据，保存到数据缓冲区buf中，并返 回实际读取的字节数，具体函数参数如下：
+
+- fd：文件对应的文件描述符，可以通过fopen函数获得。另外，当一个程序 运行时，Linux默认有0、1、2这三个已经打开的文件描述符，分别对应了标准输入、标准输出、标准错误输出，即可以直接访问这三种文件描述符；
+- buf：指向数据缓冲区的指针；
+- count：读取多少个字节的数据。
+
+
+
+
+
+##### 3. write函数
+
+```c
+#include <unistd.h>
+ssize_t write(int fd, const void *buf, size_t count);
+```
+
+write函数用于往文件写入内容，并返回实际写入的字节长度，具体函数参数如下：
+
+- fd：文件对应的文件描述符，可以通过fopen函数获得。
+- buf：指向数据缓冲区的指针；
+- count：往文件中写入多少个字节。
+
+
+
+
+
+##### 4. close函数
+
+```C
+int close(int fd);
+```
+
+当我们完成对文件的操作之后，想要关闭该文件，可以调用close函数，来关闭该fd文件描述符对应的文件。
+
+
+
+
+
+
+
+##### 5. lseek函数
+
+lseek函数可以用与设置文件指针的位置，并返回文件指针相对于文件头 的位置。其函数原型如下：
+
+```C
+off_t lseek(int fd, off_t offset, int whence);
+```
+
+它的用法与flseek一样，其中的offset参数用于指定位置，whence参数则定义了offset的意义，whence的可取值如下：
+
+- SEEK_SET：offset是一个绝对位置。
+- SEEK_END：offset是以文件尾为参考点的相对位置。
+- SEEK_CUR：offset是以当前位置为参考点的相对位置。
+
+
+
+
+
+##### 6.sync函数
+
+页缓存和回写
+
+功能
+
+强制把修改过的页缓存区数据写入磁盘
+
+头文件
+
+```
+#include <unistd.h>
+```
+
+函数原型
+
+```
+void sync(void);
+```
+
+返回值
+
+无
+
+
+
+
+
+
+
+
+
+##### 实验代码
+
+```C
+#include <sys/stat.h>
+#include <unistd.h>
+#include <fcntl.h>
+#include <stdio.h>
+#include <string.h>
+
+//文件描述符
+int fd;
+char str[100];
+
+
+int main(void)
+{
+   //创建一个文件
+   fd = open("testscript.sh", O_RDWR|O_CREAT|O_TRUNC, S_IRWXU);
+   //文件描述符fd为非负整数
+   if(fd < 0){
+      printf("Fail to Open File\n");
+      return 0;
+   }
+   //写入字符串pwd
+   write(fd, "pwd\n", strlen("pwd\n"));
+
+   //写入字符串ls
+   write(fd, "ls\n", strlen("ls\n"));
+
+   //此时的文件指针位于文件的结尾处，使用lseek函数使文件指针回到文件头
+   lseek(fd, 0, SEEK_SET);
+
+   //从文件中读取100个字节的内容到str中，该函数会返回实际读到的字节数
+   read(fd, str, 100);
+
+   printf("File content:\n%s \n", str);
+
+   close(fd);
+
+   return 0;
+}
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+#### 常用头文件
+
+在后面的学习中我们常常会用到以下头文件，此处进行简单说明，若想查看具体的头文件内容，使用locate命令找到该文件目录后打开即可：
+
+- 头文件stdio.h：C标准输入与输出（standard input & output）头文件，我们经常使用的打印函数printf函数就位于该头文件中。
+- 头文件stdlib.h：C标准库（standard library）头文件，该文件包含了常用的malloc函数、free函数。
+- 头文件sys/stat.h：包含了关于文件权限定义，如S_IRWXU、S_IWUSR，以 及函数fstat用于查询文件状态。涉及系统调用文件相关的操作，通常都需要用到sys/stat.h文件。
+- 头文件unistd.h：UNIX C标准库头文件，unix，linux系列的操 作系统相关的C库，定义了unix类系统POSIX标准的符号常量头文件，比如Linux标准的输入文件描述符（STDIN），标准输出文件描述符（STDOUT），还有read、write等系统调用的声明。
+- 头文件fcntl.h：unix标准中通用的头文件，其中包含的相关函数有 open，fcntl，close等操作。
+- 头文件sys/types.h：包含了Unix/Linux系统的数据类型的头文件，常用的有size_t
+
+
+
+
+
+
+
+
+
+#### 标准IO函数
+
