@@ -2308,7 +2308,7 @@ sys目录下的文件/文件夹向用户提供了一些关于设备、内核模�
 | module  | 该目录记录了系统加载的所有内核模块，每个文件夹名以模块命名   |
 | fs      | 包含了系统中注册文件系统                                     |
 
-#### 
+
 
 
 
@@ -2738,5 +2738,285 @@ int main(void)
 
 
 
-#### 标准IO函数
+
+
+## 2.7 控制LED灯设备
+
+
+
+
+
+#### 驱动程序
+
+本质：为硬件设备创建相应的设备节点文件
+
+创建设备文件时，规定好设备文件的使用方式。
+
+
+
+
+
+
+
+#### 应用程序
+
+根据驱动程序规定的设备文件使用方式去控制硬件
+
+
+
+
+
+
+
+#### 控制硬件设备步骤
+
+1、找出硬件设备所对应的设备节点文件
+
+两个地方：
+
+- /dev目录下
+
+  对驱动程序熟悉的工程师可以使用，一个设备节点文件控制硬件全部特性
+
+- /sys目录下
+
+  业余工程师使用，一个设备节点文件只控制硬件的一个特性
+
+  严格来说，它下面的文件是Linux内核导出到用户空间的硬件操作接口
+
+2、找出驱动程序规定的设备文件使用方式
+
+
+
+
+
+
+
+#### LED灯程序
+
+设备节点文件：/sys/class/leds
+
+往brightness文件写入一个数值，就能控制led灯的亮度
+
+led亮度值:0~255
+
+
+
+
+
+```c
+#include <unistd.h>
+#include <sys/stat.h>
+#include <sys/types.h>
+#include <fcntl.h>
+#include <stdio.h>
+#include <stdlib.h>
+
+
+#define RLED "/sys/class/leds/red/brightness"
+#define GLED "/sys/class/leds/green/brightness"
+#define BLED "/sys/class/leds/blue/brightness"
+
+int main()
+{
+        int res=0;
+        int r_fd,g_fd,b_fd;
+
+        printf("This is the led demo\n");
+    
+        r_fd=open(RLED,O_WRONLY);
+        if(r_fd<0){
+                printf("Fail to open device!\n");
+                exit(1);
+            }
+    
+            g_fd=open(GLED,O_WRONLY);
+            if(g_fd<0){
+                    printf("Fail to open device!\n");
+                    exit(1);
+            }
+    
+            b_fd=open(BLED,O_WRONLY);
+            if(b_fd<0){
+                    printf("Fail to open device!\n");
+                    exit(1);
+            }
+    
+            while(1)
+            {
+                    write(r_fd,"255",3);
+                    printf("1\n");
+                    sleep(1);
+                    write(r_fd,"0",1);
+                    printf("0\n");
+                    sleep(1);
+          	}
+     close(r_fd);
+            close(g_fd);
+            close(b_fd);
+    
+            return 0;
+    
+}    
+
+
+```
+
+
+
+
+
+
+
+
+
+## 2.8 控制蜂鸣器
+
+GPIO子系统
+
+需要手动导出控制蜂鸣器的GPIO操作接口
+
+引脚:GPIO1_19，1代表组号，19是组内引脚编码
+
+Linux系统引脚编号规则:(组号-1)*32+组内引脚编码。
+
+GPIO1_19在Linux内核的引脚编号为19
+
+
+
+![image-20220605163124070](https://s2.loli.net/2022/06/05/CQBnSrpUXEfWods.png)
+
+导出gpio子系统硬件操作接口方法：
+
+/sys/calss/gpio/export,把引脚编号写进去。
+
+```shell
+echo 19 > /sys/class/gpio/export
+#查看目录的变化，增加了gpio19目录
+ls /sys/class/gpio/
+#把gpio19从用户空间中取消导出
+echo 19 > /sys/class/gpio/unexport
+#查看目录变化，gpio19目录消失了
+ls /sys/class/gpio/
+```
+
+![image-20220605163310443](https://s2.loli.net/2022/06/05/mVlOqvyBtjHiYMJ.png)
+
+
+
+gpio19/direction:控制芯片引脚的输入输出模式。
+
+- in代表输入
+- out代表输出
+
+gpio19/value:控制输出电平
+
+- 1代表高电平
+- 0代表低电平
+
+
+
+
+
+```c
+#include <string.h>
+#include <sys/stat.h>
+#include <unistd.h>
+#include <fcntl.h>
+#include "includes/bsp_beep.h"
+
+
+int beep_init(void)
+{
+   int fd;
+   //index config
+   fd = open("/sys/class/gpio/export", O_WRONLY);
+   if(fd < 0)
+      return 1 ;
+
+   write(fd, BEEP_GPIO_INDEX, strlen(BEEP_GPIO_INDEX));
+   close(fd);
+
+   //direction config
+   fd = open("/sys/class/gpio/gpio" BEEP_GPIO_INDEX "/direction", O_WRONLY);
+   if(fd < 0)
+      return 2;
+
+   write(fd, "out", strlen("out"));
+   close(fd);
+
+   return 0;
+}
+
+int beep_deinit(void)
+{
+   int fd;
+   fd = open("/sys/class/gpio/unexport", O_WRONLY);
+   if(fd < 0)
+      return 1;
+
+   write(fd, BEEP_GPIO_INDEX, strlen(BEEP_GPIO_INDEX));
+   close(fd);
+
+   return 0;
+}
+
+
+int beep_on(void)
+{
+   int fd;
+
+   fd = open("/sys/class/gpio/gpio" BEEP_GPIO_INDEX "/value", O_WRONLY);
+   if(fd < 0)
+      return 1;
+
+   write(fd, "1", 1);
+   close(fd);
+
+   return 0;
+}
+
+int beep_off(void)
+{
+   int fd;
+
+   fd = open("/sys/class/gpio/gpio" BEEP_GPIO_INDEX "/value", O_WRONLY);
+   if(fd < 0)
+      return 1;
+
+   write(fd, "0", 1);
+   close(fd);
+
+   return 0;
+}
+```
+
+
+
+
+
+
+
+## 2.9 检测按键输入
+
+key按键的设备文件:
+
+```
+/dev/input/by-path/platform-gpio-keys-event
+```
+
+#### input子系统
+
+- 按键
+- 键盘
+- 鼠标
+- 触摸屏
+- ...
+
+#### input_event
+
+- time:用来记录输入时间的时间戳
+- type：用来记录输入事件的类型，比如按键输入类型、坐标输入类型.特殊类型:EV_SYN，同步事件，提醒我们及时处理已经发生的完成输入事件
+- code:记录输入类型的具体事件代号，比如键盘发生按键输入类型事件时，记录键盘那个值被按下了。
+- value：用来记录事件的具体值。比如在按键输入类型事件里，value值为1代表按键被按下，value值为0代表按键被松开
 
