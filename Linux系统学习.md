@@ -3020,3 +3020,687 @@ key按键的设备文件:
 - code:记录输入类型的具体事件代号，比如键盘发生按键输入类型事件时，记录键盘那个值被按下了。
 - value：用来记录事件的具体值。比如在按键输入类型事件里，value值为1代表按键被按下，value值为0代表按键被松开
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# 3.系统编程
+
+
+
+
+
+
+
+## 3.1进程
+
+```
+#include <stdio.h>
+#include <unistd.h>
+
+int main()
+{
+        pid_t i;
+        printf("befor fork!\r\n");
+        i=fork();
+        printf("after fork=%d\r\n",i);
+        return 0;
+}
+
+```
+
+
+
+
+
+### 启动新进程
+
+在Linux中启动一个进程有多种方法，比如可以使用system()函数， 也可以使用fork()函数去启动
+
+#### system()启动进程
+
+system()函数是C标准库中提供的，它主要是提供了一种调用其它程序的简单方法。 
+
+```c
+#include <sys/types.h>
+#include <unistd.h>
+#include <stdio.h>
+#include <stdlib.h>
+
+int main(void)
+{
+    pid_t result;
+
+    printf("This is a system demo!\n\n");
+
+    /*调用 system()函数*/
+    result = system("ls -l");
+
+    printf("Done!\n\n");
+
+    return result;
+}
+```
+
+#### fork()函数启动进程
+
+头文件
+
+```
+#include <unistd.h>
+```
+
+函数原型
+
+```
+pid_t fork(void);
+```
+
+执行fork函数后，会返回两次
+
+在旧进程中返回时，返回值为新进程的PID
+
+新进程返回为0
+
+### 子进程偷梁换柱
+
+#### exec函数族
+
+​	exec系列函数，这个系列函数主要是用于替换进程的执行程序， 它可以根据指定的文件名或目录名找到可执行文件，并用它来取代原调用进程的数据段、代码段和堆栈段， 在执行完之后，原调用进程的内容除了进程号外，其他全部被新程序的内容替换。
+
+
+
+常用后缀:
+
+```
+l：代表以列表形式传参(list)
+v：代表以矢量数组形式传参(vector)
+p：代表使用环境变量Path来寻找指定执行文件
+e：代表用户提供自定义的环境变量
+```
+
+头文件：
+
+```
+#include <unistd.h>
+```
+
+函数原型:
+
+```
+int execl(const char *path, const char *arg, ...)
+```
+
+​	execl()函数用于执行参数path字符串所代表的文件路径（必须指定路径）， 接下来是一系列可变参数，它们代表执行该文件时传递过去的 `argv[0]、argv[1]… argv[n]` ， 最后一个参数必须用空指针NULL作为结束的标志。
+
+```C
+#include <stdio.h>
+#include <unistd.h>
+int main()
+{
+        pid_t result;
+
+        result = fork();
+
+        if(result==0)
+        {
+                execl("/bin/ls","ls","-l",NULL);
+                printf("error\r\n");
+                return 1;
+        }
+        return 0;
+}
+```
+
+​	exec系列函数是直接将当前进程给替换掉的， 当调用exec系列函数后，当前进程将不会再继续执行， 所以示例程序中的“ **error** ”将不被输出，因为当前进程已经被替换了，一般情况下， exec系列函数函数是不会返回的，除非发生了错误。出现错误时， exec系列函数将返回-1，并且会设置错误变量errno。
+
+```
+int execlp(const char *file, const char *arg, ...)
+```
+
+```
+#include <stdio.h>
+#include <unistd.h>
+
+int main()
+{
+        pid_t result;
+        result = fork();
+        if(result>0)
+        {
+                execlp("ls","ls","-l",NULL);
+                printf("error\r\n");
+                return 1;
+        }
+
+        return 0;
+}
+```
+
+
+
+```
+int execv(const char *path, char *const argv[])
+```
+
+```
+#include <stdio.h>
+#include <unistd.h>
+
+int main()
+{
+        pid_t result;
+        char *arg[]={"ls","-l",NULL};
+        result = fork();
+
+        if(result>0)
+        {
+                execv("/bin/ls",arg);
+                printf("error\r\n");
+                return 1;
+        }
+
+        return 0;
+```
+
+
+
+```
+int execve(const char *path, char *const argv[],char *const envp[])
+```
+
+```C
+#include <stdio.h>
+#include <unistd.h>
+
+int main()
+{
+        pid_t result;
+        char *arg[]={"env",NULL};
+        char *env[]={"PATH=/tmp","name=embedfire",NULL};
+        result = fork();
+
+        if(result>0)
+        {
+                execve("/usr/bin/env",arg,env);
+                printf("error\r\n");
+                return 1;
+        }
+
+        return 0;
+
+}
+```
+
+返回值:
+
+成功：不返回
+
+失败：-1
+
+- 名称包含 l 字母的函数（execl、execlp和execle）接收参数列表“list”作为调用程序的参数。
+- 名称包含 p 字母的函数（execvp 和 execlp）可接受一个程序名作为参数， 它会在当前的执行路径和环境变量“PATH”中搜索并执行这个程序（即可使用相对路径）； 名字不包含p字母的函数在调用时必须指定程序的完整路径（即要求绝对路径）。
+- 名称包含 v 字母的函数（execv、execvp 和 execve）的子程序参数通过一个数组“vector”装载。
+- 名称包含 e 字母的函数（execve 和 execle）比其它函数多接收一个指明环境变量列表的参数， 并且可以通过参数envp传递字符串数组作为新程序的环境变量， 这个envp参数的格式应为一个以 NULL 指针作为结束标记的字符串数组， 每个字符串应该表示为“environment = virables”的形式。
+
+
+
+#### 要点总结
+
+- l后缀和v后缀必须两者选其一来使用
+
+- p后缀和e后缀是可选的，可用可不用
+- 组合后缀的相关函数还有很多，可自己进一步了解
+
+exce函数有可能执行失败，需要预防
+
+- 新程序的文件路径出错
+- 传参或者是自定义环境变量时，没有加NULL
+- 新程序没有执行权限
+
+
+
+
+
+
+
+
+
+### 终止进程
+
+
+
+```c
+#include<unistd.h>
+void _exit(int state);
+
+#include <stdlib.h>
+void exit(int state);
+```
+
+exit()和_exit()函数都是用来终止进程的，当程序执行到exit()或__exit()函数时， 进程会无条件地停止剩下的所有操作，清除包括PCB在内的各种数据结构，并终止当前进程的运行。
+
+![proces014](https://s2.loli.net/2022/06/09/IdYEfLV73NatjXC.png)
+
+_exit()函数的作用最为简单：直接通过系统调用使进程终止运行， 当然，在终止进程的时候会清除这个进程使用的内存空间，并销毁它在内核中的各种数据结构； 
+
+exit()函数则在这些基础上做了一些包装，在执行退出之前加了若干道工序： 比如exit()函数在调用exit系统调用之前要检查文件的打开情况， 把文件缓冲区中的内容写回文件，这就是“清除I/O缓冲”。
+
+
+
+
+
+
+
+
+
+
+
+### 等待进程
+
+```
+pid_t wait(int *wstatus);
+```
+
+​	wait()函数在被调用的时候，系统将暂停父进程的执行，直到有信号来到或子进程结束， 如果在调用wait()函数时子进程已经结束，则会立即返回子进程结束状态值。 子进程的结束状态信息会由参数wstatus返回，与此同时该函数会返子进程的PID， 它通常是已经结束运行的子进程的PID
+
+通过宏定义来判断子进程退出的状态：
+
+- WIFEXITED(status) ：如果子进程正常结束，返回一个非零值
+- WEXITSTATUS(status)： 如果WIFEXITED非零，返回子进程退出码
+- WIFSIGNALED(status) ：子进程因为捕获信号而终止，返回非零值
+- WTERMSIG(status) ：如果WIFSIGNALED非零，返回信号代码
+- WIFSTOPPED(status)： 如果子进程被暂停，返回一个非零值
+- WSTOPSIG(status)： 如果WIFSTOPPED非零，返回一个信号代码
+
+
+
+
+
+```c
+#include <sys/types.h>
+#include <sys/wait.h>
+#include <unistd.h>
+#include <stdio.h>
+#include <stdlib.h>
+
+int main()
+{
+    pid_t pid, child_pid;
+    int status;
+
+    pid = fork();                  //(1)
+
+    if (pid < 0) {
+        printf("Error fork\n");
+    }
+    /*子进程*/
+    else if (pid == 0) {                  //(2)
+
+        printf("I am a child process!, my pid is %d!\n\n",getpid());
+
+        /*子进程暂停 3s*/
+        sleep(3);
+
+        printf("I am about to quit the process!\n\n");
+
+        /*子进程正常退出*/
+        exit(0);                          //(3)
+    }
+    /*父进程*/
+    else {                                //(4)
+
+        /*调用 wait，父进程阻塞*/
+        child_pid = wait(&status);        //(5)
+
+        /*若发现子进程退出，打印出相应情况*/
+        if (child_pid == pid) {
+            printf("Get exit child process id: %d\n",child_pid);
+            printf("Get child exit status: %d\n\n",status);
+        } else {
+            printf("Some error occured.\n\n");
+        }
+
+        exit(0);
+    }
+}
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+### 进程组、会话、终端
+
+#### 进程组
+
+作用:对相同类型的进程进行管理
+
+#### 进程组的诞生
+
+- 在shell里面直接执行一个应用程序，对于大部分进程来说，自己就是进程组的首进程。进程组只有一个进程
+- 如果进程调用了fork函数，那么父子进程同属一个进程组，父进程为首进程
+- 在shell中通过管道执行连接起来的应用程序，两个程序同属一个进程组，第一个程序为进程组的首进程
+
+进程组id：pgid，由首进程pid决定
+
+#### 会话
+
+作用：管理进程组
+
+#### 会话的诞生
+
+- 调用setsid函数，新建一个会话，应用程序作为会话的第一个进程，称为会话首进程
+- 用户在终端正确登录之后，启动shell时linux系统会创建一个新的会话，shell进程作为会话首进程
+
+会话id：会话首进程id，SID
+
+#### 前台进程组
+
+shell进程启动时，默认是前台进程组的首进程。
+
+前台进程组的首进程会占用会话所关联的终端来运行，shell启动其他应用程序时，其他程序成为首进程
+
+#### 后台进程组
+
+后台进程中的程序是不会占用终端
+
+在shell进程里启动程序时，加上&符号可以指定程序运行在后台进程组里面
+
+ctrl+z
+
+```shell
+sleep 100 & //前台进程组变为后台进程组
+
+sleep 100
+ctrl + z
+```
+
+jobs:查看有哪些后台进程组
+
+fg+job id可以把后台进程组切换为前台进程组
+
+#### 终端
+
+- 物理终端
+
+  - 串口终端
+  - lcd终端
+
+- 伪终端
+
+  - ssh远程连接产生的终端
+  - 桌面系统启动的终端
+
+- 虚拟终端
+
+  linux内核自带的，ctrl+alt+f0~f6可以打开7个虚拟终端
+
+
+
+
+
+
+
+
+
+
+
+### 守护进程
+
+会话用来管理前后台进程组
+
+会话一般关联着一个终端
+
+当终端被关闭了之后，会话中的所有进程都会被关掉
+
+
+
+#### 守护进程
+
+守护进程不受终端影响，就算终端微退出，也可以继续在后台运行
+
+
+
+#### 如何来写一个守护进程
+
+1.创健一个子进程，父进程直接退出
+
+​	方法：通过fork(函数
+
+2.创建一个新的会话，摆脱终端的影响
+
+​	方法：通过setsid0函数
+
+3.改变守护进程的当前工作目录，改为"/"
+
+​	方法：通过chrdir()函数
+
+4.重设文件权限掩码
+
+​	新建文件的权限受文件权限掩码影响
+
+​	uamsk:022,000010010,只写
+
+​	新建文件默认执行权限：666,110110110
+
+​	真正的文件执行权限：666&-umask 
+
+​	方法：通过umask()函数
+
+5.关闭不需要的文件描述符
+
+​	0,1,2:标准输入、输出、出错
+
+​	方法:通过close0函数
+
+```c
+#include <sys/types.h>
+#include <sys/wait.h>
+#include <unistd.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <sys/stat.h>
+#include <string.h>
+#include <fcntl.h>
+
+int main()
+{
+        pid_t pid;
+        int fd,len,i,num;
+        char *buf="the dameon is running\n";
+        len =strlen(buf)+1;
+
+
+        pid=fork();
+        if(pid>0)
+        {
+                exit(0);
+        }
+
+        //创建新会话，摆脱终端影响
+        setsid();
+
+        //改变当前工作目录
+        chdir("/");
+
+        //重设文件权限掩码
+        umask(0);
+
+        for(int i=0;i<3;i++)
+        {
+                close(i);
+        }
+
+        while(1)
+        {
+                fd=open("/var/log/dameon.log",O_CREAT|O_WRONLY|O_APPEND,0666);
+                write(fd,buf,len);
+                close(fd);
+                sleep(5);
+        }
+        return 0;
+}
+```
+
+
+
+
+
+### ps命令详解
+
+
+
+两个常用命令：
+
+aux
+
+axjf
+
+- a:显示一个终端所有的进程
+- u:显示进程的归属用户及内存使用情况
+- x:显示没有关联控制终端的进程
+- j:显示进程归属的进程组id、会话id、父进程id
+- f:以ascii形式显示出进程的层次关系
+
+#### ps aux
+
+- user：进程是哪个用户产生的
+- pid:进程的身份证号码
+- %cpu:表示进程占用了cpu计算能力的百分比
+- %mem:表示进程占用了系统内存的百分比
+- vsz:进程使用的虚拟内存大小
+- rss:进程使用的物理内存大小
+- tty:表示进程关联的终端
+- stat:表示进程当前状态
+- start:表示进程的启动时间
+- time:记录进程的运行时间
+- command:表示进程执行的具体程序
+
+#### ps axjf
+
+- ppid:表示进程的父进程id
+- pid:进程的身份证号码
+- pgid:进程所在进程组的id
+- sid：进程所在会话的id
+- tty:表示进程关联的终端
+- tpgid:值为-1，表示进程为守护进程
+- stat:表示进程当前状态
+- uid:启动进程的用户id
+- time:记录进程的运行时间
+- command:表示进程的层次关系
+
+stat：常见状态
+
+常见的状态有以下几种:
+
+-D:不可被唤醒的睡眠状态,通常用于1/O情况。
+
+-R:该进程正在运行。
+
+-S:该进程处于睡眠状态,可被唤醒。
+
+-T:停止状态,可能是在后台暂停或进程处于除错状态。
+
+-X:死掉的进程
+
+-Z:/僵尸状态。
+
+-N:低优先级。
+
+-S:进程是会话首进程。
+
+-1:多线程(小写L)+位于后台。
+
+
+
+#### 使用场景
+
+关注进程本身:ps aux
+
+关注进程间的关系:ps axjf
+
+
+
+
+
+
+
+
+
+
+
+
+
+### 僵尸进程和托孤进程
+
+进程的正常退出步骤:
+
+- 子进程调用exit()函数退出
+- 父进程调用wait()函数为子进程处理其他事情
+
+ 
+
+#### 僵尸进程
+
+子进程退出后，父进程没有调用wait()函数处理身后事，子进程变成僵尸进程
+
+```c
+#include <stdio.h>
+#include <stdlib.h>
+#include <sys/types.h>
+#include <unistd.h>
+
+int main()
+{
+        pid_t pid;
+        pid=fork();
+
+        if(pid<0)
+        {
+                perror("fail to fokr!\r\n");
+                return -1;
+        }
+        else if(pid==0)
+        {
+                printf("child next now.\n");
+                exit(0);
+        }else
+        {
+                while(1);
+        }
+        return 0;
+}
+         
+```
+
+
+
+
+
+#### 托孤进程
+
+父进程比子进程先退出，子进程变为孤儿进程，Linux系统会把子进程托孤给1号进程(init进程)
+
+
+
+
+
