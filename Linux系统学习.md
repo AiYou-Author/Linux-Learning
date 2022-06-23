@@ -3034,7 +3034,7 @@ key按键的设备文件:
 
 
 
-# 3.系统编程
+# 3. 系统编程
 
 
 
@@ -3042,7 +3042,7 @@ key按键的设备文件:
 
 
 
-## 3.1进程
+## 3.1 进程
 
 ```
 #include <stdio.h>
@@ -3699,6 +3699,1684 @@ int main()
 #### 托孤进程
 
 父进程比子进程先退出，子进程变为孤儿进程，Linux系统会把子进程托孤给1号进程(init进程)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+## 3.2 管道
+
+
+
+### 1.什么是进程间通信(ipc)
+
+
+
+#### 进程间通信
+
+- 数据传输
+- 资源共享
+- 事件通知
+- 进程控制
+
+#### Linux系统下的ipc
+
+- 早期unix系统ipc
+  - 管道
+  - 信号
+  - fifo
+- system-v ipc（贝尔实验室）
+  - system-v 消息队列
+  - system-v 信号量
+  - system-v 共享内存
+- socket ipc（BSD）
+- posix ipc(IEEE)
+  - posix 消息队列
+  - posix 信号量
+  - posix 共享内存
+
+
+
+
+
+
+
+### 2.无名管道
+
+
+
+#### pipe函数
+
+头文件：
+
+```
+#include <unistd.h>
+```
+
+函数原型:
+
+```
+int pipe(int pipefd[2]);
+```
+
+pipefd[0]为读文件描述符；pipefd[1]为写文件描述符
+
+返回值:
+
+成功:0
+
+失败:-1
+
+#### 特点
+
+- 特殊文件(没有名字)，无法使用open，但是可以使用close。
+- 只能通过子进程继承文件描述符的形式来使用
+- write和read操作可能会阻塞进程
+- 所有文件描述符被关闭之后，无名管道被销毁
+
+#### 使用步骤
+
+- 父进程pipe无名管道
+- fork子进程
+- close无用端口
+- write/read读写端口
+- close读写端口
+
+```c
+#include <unistd.h>
+#include <sys/types.h>
+#include <sys/wait.h>
+#include <errno.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+#define MAX_DATA_LEN 256
+
+int main()
+{
+	pid_t pid;
+	int pipe_fd[2];
+	int status;
+	char buf[MAX_DATA_LEN];
+	const char data[]="pipe test program";
+	int real_read,real_write;
+
+	memset((void*)buf,0,sizeof(buf));
+
+	if(pipe(pipe_fd)<0)
+	{
+		printf("pipe create error\n");
+		exit(0);
+	}
+
+	pid=fork();
+
+	if(pid==0)
+	{
+		close(pipe_fd[1]);
+		if(real_read==read(pipe_fd[0],buf,MAX_DATA_LEN)>0)
+		{
+			printf("%d bytes read from the pipe is %s\n",real_read,buf);	
+		}
+
+		close(pipe_fd[0]);
+		exit(0);
+	}else if(pid>0)
+	{
+		close(pipe_fd[0]);
+		if(real_write=write(pipe_fd[1],data,strlen(data))!= -1)
+		{
+			printf("parent write %d bytes : %s\n",real_write,data);
+		}	
+		close(pipe_fd[1]);
+		wait(&status);
+		exit(0);
+	}
+
+}
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+### 3.有名管道
+
+####  mkfifo函数
+
+头文件：
+
+```
+#include <sys/types.h>
+#include <sys/stat.h>
+```
+
+函数原型:
+
+```
+int mkfifo(const char *filename,mode_t mode)
+```
+
+输入：文件路径，打开权限
+
+返回值:
+
+成功:0
+
+失败:-1
+
+#### 特点
+
+- 有文件名，可以使用open函数打开
+- 任意进程间数据传输
+- write和read操作可能会阻塞进程
+- write具有"原子性"
+
+#### 使用步骤
+
+- 第一个进程mkfifo有名管道
+- open有名管道，write/read数据
+- close有名管道
+- 第二个进程open有名管道，read/write数据
+- close有名管道
+
+
+
+
+
+
+
+#### 写进程
+
+```c
+#include <unistd.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+#include <errno.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <limits.h>
+
+#define MAX_DATA_LEN 256
+
+#define MY_FIFO "/tmp/myfifo"
+
+int main(int argc,char* argv[])
+{
+	pid_t pid;
+	int fd;
+	int nwrite;
+    //第一个参数为输入fifo的数据
+	char *buf=argv[1];
+
+	if(argc<2)
+	{
+		printf("未输入参数!\n");
+		exit(1);
+	}
+	
+    //判断有名管道是否存在
+	if(access(MY_FIFO,F_OK)==-1)
+	{
+		if((mkfifo(MY_FIFO,0666)<0) && (errno!=EEXIST))
+		{
+			printf("cannot create fifo file\n");
+			exit(1);
+		}
+	}
+
+	fd=open(MY_FIFO,O_WRONLY);
+
+	if(fd<0)
+	{
+		printf("open fifo file error\n");
+		exit(1);
+	}
+
+	if((nwrite=write(fd,buf,sizeof(buf))>0))
+	{
+		printf("write '%s' to FIFO\n",buf);
+	}
+
+	close(fd);
+	exit(0);
+
+}
+```
+
+
+
+
+
+
+
+
+
+#### 读进程
+
+```c
+#include <unistd.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+#include <errno.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <limits.h>
+#include <string.h>
+
+#define MY_FIFO "/tmp/myfifo"
+
+#define MAX_BUFFER_SIZE PIPE_BUF
+
+int main(int argc,char *argv[])
+{
+	char buff[MAX_BUFFER_SIZE];
+	int fd;
+	int nread;
+
+	//判断有名管道是否存在
+	if(access(MY_FIFO,F_OK)==-1)
+	{
+		if((mkfifo(MY_FIFO,0666)<0)&& (errno != EEXIST))
+		{
+			printf("cannot create fifo file\n");
+			exit(1);
+		}
+	}
+	
+	fd=open(MY_FIFO,O_RDONLY);
+
+	if(fd==-1)
+	{
+		printf("open fifo file error!\n");
+		exit(1);
+	}
+
+	while (1)
+	{
+		memset(buff,0,sizeof(buff));
+		if((nread=read(fd,buff,MAX_BUFFER_SIZE))>0)
+		{
+			printf("Read '%s' from FIFO\n",buff);
+		}
+		
+	}
+	close(fd);
+	exit(0);
+
+}
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+## 3.3 信号
+
+
+
+### 1.信号简介
+
+
+
+#### 信号的基本概念
+
+软件模拟中断，进程接受信号后做出相应响应
+
+#### 怎么产生信号?
+
+- 硬件
+  - 执行非法指令
+  - 访问非法内存
+  - 驱动程序
+  - ...
+
+- 软件
+
+  - 控制台:
+    - ctrl+c:中断信号
+    - ctrl+|:退出信号
+    - ctrl+z:停止信号
+
+  - kill命令
+  - 程序调用kill()函数
+
+#### 信号的处理方式：
+
+- 忽略:进程当信号从来没有发生过
+- 捕获:进程会调用相应的处理函数，进行相应的处理
+- 默认:使用系统默认处理方式来处理信号
+
+
+
+
+
+
+
+
+
+### 2.常用信号分析
+
+![image-20220617104829478](https://s2.loli.net/2022/06/17/nGtf74SaFhIMACw.png)
+
+| 信号名  | 信号编号 | 产生原因     | 默认处理方式        |
+| ------- | -------- | ------------ | ------------------- |
+| SIGHUP  | 1        | 关闭终端     | 终止                |
+| SIGINT  | 2        | ctrl+c       | 终止                |
+| SIGQUIT | 3        | ctrl+\       | 终止+转储           |
+| SIGABRT | 6        | abort()      | 终止+转储           |
+| SIGPE   | 8        | 算术错误     | 终止                |
+| SIGKILL | 9        | kill -9 pid  | 终止，不可捕获/忽略 |
+| SIGUSR1 | 10       | 自定义       | 忽略                |
+| SIGSEGV | 11       | 段错误       | 终止+转储           |
+| SIGUSR2 | 12       | 自定义       | 忽略                |
+| SIGALRM | 14       | alarm()      | 终止                |
+| SIGTERM | 15       | kill pid     | 终止                |
+| SIGCHLD | 17       | (子)状态变化 | 忽略                |
+| SIGTOP  | 19       | ctrl+z       | 暂停，不可捕获/忽略 |
+
+pkill命令
+
+![image-20220617105048164](https://s2.loli.net/2022/06/17/CXE6P4OQw9Ro2ID.png)
+
+
+
+
+
+
+
+### 3.signal_kill_raise函数
+
+
+
+#### signal函数（**信号的回调函数**）
+
+头文件:
+
+```
+include<signal.h>
+```
+
+函数原型:
+
+```
+typedef void (*sighandler_t)(int);
+
+sighandler_t signal(int signum,sighandler_t handler);
+```
+
+参数:
+
+- signum： 要设置的信号
+- handler：
+  - SIG_IGN：忽略
+  - SIG_DFL：默认
+  - void (*sighandler_t)(int)：自定义
+
+返回值：
+
+成功：上一次设置的handler
+
+失败：SIG_ERR
+
+
+
+```c
+#include <unistd.h>
+#include <sys/types.h>
+#include <sys/wait.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <signal.h>
+
+
+void signal_handler(int sig)
+{
+	printf("\nthis signal number is %d\n",sig);
+
+	if(sig==SIGINT)
+	{
+		printf("I have get SIGINT!\n\n");
+		printf("The signal has been restored to the default processing mode!\n\n");
+		signal(SIGINT,SIG_DFL);
+	}
+
+}
+
+
+int main(int argc,char *argv[])
+{
+	printf("\nthis is an alarm test function\n\n");
+
+	//设置信号处理的回调函数
+	signal(SIGINT,signal_handler);
+
+	while (1)
+	{
+		printf("waiting for the SIGINT signal, please enter ctrl +c \n");
+		sleep(1);
+	}
+	
+	exit(0);
+}
+```
+
+
+
+
+
+
+
+
+
+#### kill函数
+
+头文件:
+
+```
+#include <sys/types.h>
+#include <signal.h>
+```
+
+原型函数:
+
+```
+int kill(pid_t pid,int sig);
+```
+
+参数:
+
+- pid：进程id
+- sig：要发送的信号
+
+返回值:
+
+成功：0
+
+失败：-1
+
+
+
+#### raise函数（发送信号）
+
+
+
+头文件:
+
+```
+#include <signal>
+```
+
+原型函数:
+
+```
+int raise(int sig);
+```
+
+参数:
+
+sig：发送信号
+
+返回值：
+
+成功：0
+
+失败：非0
+
+
+
+
+
+
+
+```c
+#include <unistd.h>
+#include <sys/types.h>
+#include <sys/wait.h>
+#include <signal.h>
+#include <stdio.h>
+#include <stdlib.h>
+
+
+int main(int argc,char* argv[])
+{
+	pid_t pid;
+	int ret;
+	pid=fork();
+	if(pid==0)
+	{
+		printf("Child is waiting for SIGSTOP signal!\n");
+		
+		//子进程暂停
+		raise(SIGSTOP);
+	}
+	else
+	{
+		sleep(3);
+		if((ret=kill(pid,SIGKILL))==0)
+		{
+			printf("parent kill %d\n",pid);
+		}
+		wait(NULL);
+		printf("parent exit!\n");
+		exit(0);
+	}
+
+}
+```
+
+
+
+
+
+
+
+
+
+
+
+### 4.信号集处理函数
+
+
+
+#### 屏蔽信号集
+
+屏蔽某些信号
+
+- 手动
+- 自动
+
+#### 未处理信号集
+
+信号如果被屏蔽，则记录在未处理信号集中
+
+- 非实时信号(1~31)，不排队,只留一个
+- 实时信号(34~64)，排队，保留全部
+
+```c
+#include <unistd.h>
+#include <sys/types.h>
+#include <signal.h>
+#include <stdio.h>
+#include <stdlib.h>
+
+void func(int signal)
+{
+	printf("hello\n");
+	sleep(5);
+	printf("world\n");
+}
+
+
+
+int main(int argc,char* argv[])
+{
+	signal(SIGINT,func);
+	while(1);
+	return 0;
+}
+```
+
+![image-20220619162830520](https://s2.loli.net/2022/06/19/Ra52yKlkpFTosXM.png)
+
+
+
+
+
+
+
+#### 信号集相关API
+
+- int sigemptyset(sigset_t *set);
+  - 将信号集合初始化为0
+- int sigfillset(sigset_t *set);
+  - 将信号集合初始化为1
+- int sigaddset(sigset_t *set,int signum);
+  - 将信号集合某一位设置为1
+- int sigdelset(sigset_t *set,int signum);
+  - 将信号集合某一位设置为0
+
+- int sigprocmask(int how,const sigset_t *set,sigset_t *oldset);
+
+  - 使用设置好的信号集去修改信号屏蔽集
+
+  - 参数how:
+    - SIG_BLOCK:屏蔽某个信号(屏蔽集 | set)
+    - SIG_UNBLOCK:打开某个信号(屏蔽集 & (~set))
+    - SIG_SETMASK:屏蔽集 = set
+
+  - 参数oldset：保存就的屏蔽集的值，NULL表示不保存
+
+```c
+#include <unistd.h>
+#include <sys/types.h>
+#include <signal.h>
+#include <stdio.h>
+#include <stdlib.h>
+
+void func(int signal)
+{
+	//初始化设置信号集
+	sigset_t set;
+	//将信号集初始化为0
+	sigemptyset(&set);
+	//将sigint设为1,即不屏蔽
+	sigaddset(&set,SIGINT);
+	//将设置好的信号集保存
+	sigprocmask(SIG_UNBLOCK,&set,NULL);
+	
+	printf("hello\n");
+	sleep(5);
+	printf("world\n");
+	
+}
+
+
+
+int main(int argc,char* argv[])
+{
+	signal(SIGINT,func);
+	while(1);
+	return 0;
+}
+```
+
+
+
+![image-20220619163353836](https://s2.loli.net/2022/06/19/hKqle38B9VCiv7M.png)
+
+
+
+
+
+
+
+
+
+## 3.4 system-V 
+
+
+
+
+
+
+
+### 1. system-V 消息队列
+
+
+
+#### system-V ipc特点
+
+- 独立于进程
+- 没有文件名和文件描述符
+- IPC对象具有key和ID
+
+#### 消息队列用法
+
+- 定义一个唯一key(ftok)
+- 构造消息对象(msgget)
+- 发送特定类型消息(msgsnd)
+- 接受特定类型消息(msgrcv)
+- 删除消息队列(msgctl)
+
+#### ftok函数
+
+功能：获取一个key
+
+函数原型：
+
+```
+key_t ftok(const char *path,int proj_id)
+```
+
+参数：
+
+- path：一个合法路径
+- proj_id：一个整数
+
+返回值：
+
+成功：合法键值
+
+失败：-1
+
+
+
+#### msgget函数（获取消息队列ID）
+
+功能：获取消息队列ID
+
+函数原型：
+
+```
+int msgget(key_t key,int msgflg)
+```
+
+参数：
+
+- key：消息队列的键值
+- msgflg：
+  - IPC_CREAT：如果消息队列不存在，则创建
+  - mode：访问权限
+
+返回值：
+
+成功：该消息队列的ID
+
+失败：-1
+
+
+
+#### msgsnd函数（发送消息）
+
+功能：发送消息到消息队列
+
+函数原型：
+
+```
+int msgsnd(int msqid,const void *msgp,size_t msgsz,int msgflg);
+```
+
+参数：
+
+- msqid：消息队列ID
+
+- msgp：消息缓存区
+
+  - struct msgbuf
+
+    {
+
+    ​	long mtype;	 //消息标识
+
+    ​	char mtext[1]; //消息内容
+
+    }
+
+- msgsz：消息正文的字节数
+
+- msgflg：
+
+  - IPC_NOWAIT：非阻塞发送
+  - 0：阻塞发送
+
+返回值：
+
+成功：0
+
+失败：-1
+
+
+
+#### msgrcv函数（接收消息）
+
+功能：从消息队列读取消息
+
+函数原型：
+
+```
+ssize_t msgrcv(int msqid,void *msgp,size_t msgsz,long msgtyp,int msgflg)
+```
+
+参数：
+
+- msqid：消息队列ID
+
+- msgp：消息缓存区
+
+- msgsz：消息正文的字节数
+
+- msgtyp：要接受消息的标识
+
+- msgflg：
+
+  - IPC_NOWAIT：非阻塞读取
+  - MSG_NOERROR：截断消息
+
+  - 0：阻塞读取
+
+返回值：
+
+成功：0
+
+失败：-1
+
+
+
+#### msgctl函数（设置消息队列相关属性）
+
+功能：设置或获取消息队列的相关属性
+
+函数原型：
+
+```
+int msgctl(int msgqid,int cmd,struct maqid_ds *buf)
+```
+
+- msgqid：消息队列的ID
+- cmd
+  - IPC_STAT：获取消息队列的属性信息
+  - IPC_SET：设置消息队列的属性
+  - IPC_RMID：删除消息队列
+
+- buf：相关结构体缓冲区
+
+
+
+
+
+
+
+
+
+
+
+#### 程序：接收message
+
+```c
+#include <unistd.h>
+#include <sys/ipc.h>
+#include <sys/types.h>
+#include <sys/msg.h>
+#include <signal.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+#define BUFFER_SIZE 512
+
+struct message
+{
+	long mytype;
+	char mtext[BUFFER_SIZE];
+};
+
+
+int main(int argc,char* argv[])
+{
+	int qid;
+	key_t key;
+	struct message msg;
+
+	//获取一个key
+	key=ftok("/tmp",11);
+	if(key==-1)
+	{
+		printf("ftok fail!\n");
+		exit(1);
+	}
+
+	//获取消息队列ID
+	qid=msgget(key,IPC_CREAT|0666);
+	if(qid==-1)
+	{
+		printf("get msgget fail!\n");
+	}
+	while(1)
+	{
+		memset(msg.mtext,0,BUFFER_SIZE);
+		if(msgrcv(qid,&msg,BUFFER_SIZE,0,0)<0)
+		{
+			printf("msgrcv");
+			exit(1);
+		}
+		printf("The message fom process%ld :%s",msg.mytype,msg.mtext);
+
+		if(strncmp(msg.mtext,"quit",4)==0)
+		{
+			break;
+		}
+
+	}
+	if(msgctl(qid,IPC_RMID,NULL)<0)
+	{
+		printf("msgctrl");
+		exit(1);
+	}
+	return 0;
+	
+
+}
+```
+
+
+
+
+
+
+
+#### 程序：发送message
+
+```c
+#include <unistd.h>
+#include <sys/ipc.h>
+#include <sys/types.h>
+#include <sys/msg.h>
+#include <signal.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+#define BUFFER_SIZE 512
+
+struct message
+{
+	long mytype;
+	char mtext[BUFFER_SIZE];
+};
+
+
+int main(int argc,char* argv[])
+{
+	int qid;
+	key_t key;
+	struct message msg;
+
+	//获取一个key
+	key=ftok("/tmp",11);
+	if(key==-1)
+	{
+		printf("ftok fail!\n");
+		exit(1);
+	}
+
+	//获取消息队列ID
+	qid=msgget(key,IPC_CREAT|0666);
+	if(qid==-1)
+	{
+		printf("get msgget fail!\n");
+	}
+	while(1)
+	{
+		printf("pleas enter your message:\n");
+
+		if(fgets(msg.mtext,BUFFER_SIZE,stdin)==NULL)
+		{
+			puts("no message");
+			exit(1);
+		}
+		msg.mytype=getpid();
+
+		if(msgsnd(qid,&msg,strlen(msg.mtext),0)<0)
+		{
+			printf("message posted");
+			exit(1);
+		}
+
+		if(strncmp(msg.mtext,"quit",4)==0)
+		{
+			break;
+		}
+
+	}
+	return 0;
+	
+
+}
+
+
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+### 2. system-V 信号量
+
+#### 本质
+
+计数器
+
+#### 作用
+
+保护共享资源
+
+- 互斥
+- 同步
+
+#### 信号量用法
+
+- 定义一个唯一key（ftok）
+- 构造一个信号量(semget)
+- 初始化信号量(semctl SETVA)
+- 对信号量进行P/V操作(semop)
+- 删除信号量(semctl RMID)
+
+
+
+#### semget函数（获取信号量ID）
+
+功能：获取信号量的ID
+
+函数原型：
+
+```
+int semget(key_t key,int nsems,int semflg)
+```
+
+参数：
+
+- key：信号量键值
+- nsems：信号量数量
+- semflg：
+  - IPC_CREATE：信号量不存在则创建
+  - mode：信号量的权限
+
+返回值：
+
+成功：信号量ID
+
+失败：-1
+
+
+
+#### semctl函数(设置信号量相关属性)
+
+功能：获取或设置信号量的相关属性
+
+函数原型：
+
+```
+int semctl(int semid,int semnum,int cmd,union semun arg)
+```
+
+参数：
+
+- semid：信号量ID
+
+- semnum：信号量编号
+
+- cmd：
+
+  - IPC_STAT：获取信号量的属性信息
+  - IPC_SET：设置信号量的属性
+  - IPC_RMID：删除信号量
+  - IPC_SETVAL：设置信号量的值
+
+- arg：
+
+  union semun
+  {
+  int val;
+  struct semid_ds *buf;
+  }
+
+返回值：
+
+成功：由cmd类型决定
+
+失败：-1
+
+
+
+#### semop函数（进行PV操作）
+
+函数原型：
+
+```
+int semop(int semid,struct sembuf *sops,size_t nsops)
+```
+
+参数：
+
+- semid：信号量ID
+
+- sops：信号量操作结构体数组
+
+  struct sembuf
+
+  {
+
+  ​	short sem_num;	//信号量编号
+
+  ​	short sem_op；//信号量P/V操作
+
+  ​	short sem_flg;	//信号量行为，SEM_UNDO
+
+  }
+
+  - nsops：信号量数量
+
+返回值：
+
+成功：0
+
+失败：-1
+
+
+
+#### 程序
+
+```c
+/*sem.h*/
+
+#include <unistd.h>
+#include <sys/ipc.h>
+#include <sys/types.h>
+#include <sys/sem.h>
+#include <sys/stat.h>
+#include <signal.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <errno.h>
+#include <fcntl.h>
+
+#define BUFFER_SIZE 512
+
+union semun
+{
+	int val;
+	struct semid_ds *buf;
+};
+
+
+//初始信号量
+void init_sem(int semid,int val)
+{
+	union semun sem_union;
+	sem_union.val=val;
+	int state = semctl(semid,0,SETVAL,sem_union);
+	if(state==-1)
+	{
+		printf("set fail!\n");
+		exit(1);
+	}
+}
+//删除信号量
+void delete_sem(int semid)
+{
+	union semun sem_union;
+	int state = semctl(semid,0,IPC_RMID,sem_union);
+	if(state==-1)
+	{
+		printf("delete fail!\n");
+		exit(1);
+	}
+}
+//P操作
+void sem_p(int semid)
+{
+	struct sembuf sem_buf;
+	sem_buf.sem_num=0;
+	sem_buf.sem_op=-1;
+	sem_buf.sem_flg=SEM_UNDO; 
+	int state = semop(semid,&sem_buf,1);
+	if(state==-1)
+	{
+		printf("P fail!\n");
+		exit(1);
+	}
+}
+//V操作
+void sem_v(int semid)
+{
+	struct sembuf sem_buf;
+	sem_buf.sem_num=0;
+	sem_buf.sem_op=1;
+	sem_buf.sem_flg=SEM_UNDO; 
+	int state = semop(semid,&sem_buf,1);
+	if(state==-1)
+	{
+		printf("V fail!\n");
+		exit(1);
+	}
+}
+```
+
+```c
+#include "sem.h"
+
+int main()
+{
+    key_t key = 6666;
+    int pid;
+    int qid;
+
+    //获取信号量ID
+    qid = semget(key, 1, IPC_CREAT | 0666);
+    if(qid==-1)
+    {
+        printf("semget error!\n");
+        exit(1);
+    }
+
+    //初始化信号量
+    init_sem(qid,0);
+
+    pid=fork();
+
+    if(pid==0)
+    {
+        printf("child process is running!\n");
+        sleep(3);
+        printf("child process is running!\n");
+        sem_v(qid);//释放资源
+        
+    }
+    else{
+        sem_p(qid);//阻塞
+        printf("parent process is running!\n");
+        sem_v(qid);
+        delete_sem(qid);
+    }
+    return 0;
+}
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+### 3. system-V 共享内存 
+
+#### 作用
+
+高效率传输大量数据
+
+#### 共享内存用法
+
+- 定义一个唯一key（ftok）
+- 构造一个共享内存对象(shmget)
+- 共享内存映射(shmat)
+- 解除共享内存映射(shmdt)
+- 删除共享内存(shmctl RMID)
+
+
+
+#### shmget函数（获取共享内存对象的ID）
+
+功能：获取共享内存对象的ID
+
+函数原型：
+
+```
+int shmget(key_t key,int size,int shmflg)
+```
+
+参数：
+
+- key：共享对象键值
+- nsems：共享内存大小
+- shmflg：
+  - IPC_CREATE：共享内存不存在则创建
+  - mode：共享内存的权限
+
+返回值：
+
+成功：共享内存ID
+
+失败：-1
+
+
+
+#### shmat函数（映射共享内存）
+
+功能：映射共享内存
+
+函数原型：
+
+```
+int shmat(int shmid,const void *shmaddr,int shmflg)
+```
+
+参数：
+
+- shmid：共享内存ID
+- shmaddr：映射地址，NULL为自动分配
+- shmflg：
+  - SHM_RDONLY：只读方式映射
+  - 0：可读可写
+
+返回值：
+
+成功：共享内存首地址
+
+失败：-1
+
+
+
+#### shmdt函数（解除共享内存映射）
+
+功能：解除共享内存映射
+
+函数原型：
+
+```
+int shmdt(const void *shmaddr)
+```
+
+参数：
+
+shmaddr：映射地址
+
+返回值：
+
+成功：0
+
+失败：-1
+
+
+
+#### shmctl函数（获取或设置共享内存的相关属性）
+
+功能：获取或设置共享内存的相关属性
+
+函数原型：
+
+```
+int shmctl(int shmid,int cmd,struct shmid_ds *buf)
+```
+
+参数：
+
+- shmid：共享内存ID
+
+- cmd：
+  - IPC_STAT：获取共享内存的属性信息
+  - IPC_SET：设置共享内存的属性
+  - IPC_RMID：删除共享内存
+
+- buf：属性缓冲区
+
+
+返回值：
+
+成功：由cmd类型决定
+
+失败：-1
+
+
+
+
+
+
+
+#### 程序
+
+```c
+#include "sem.h"
+#include <sys/shm.h>
+int main()
+{
+    key_t key = 6666;
+    key_t key1 = 7777;
+    char* addr;//映射共享内存的地址
+    int pid;
+    int qid;
+    int shm_id;
+
+    //获取信号量ID
+    qid = semget(key, 1, IPC_CREAT | 0666);
+    if (qid == -1)
+    {
+        printf("semget error!\n");
+        exit(1);
+    }
+    //构建共享内存对象
+    shm_id=shmget(key1,1024,IPC_CREAT|0666);
+
+    //初始化信号量
+    init_sem(qid, 0);
+
+    pid = fork();
+
+    if (pid == 0)
+    {
+        printf("child process is running!\n");
+        sleep(3);
+        //映射共享内存
+        addr=shmat(shm_id,NULL,0);
+        char buffer[11]="helloworld";
+        //向共享内存中写入
+        memcpy(addr,buffer,11);
+        printf("child process is running!\n");
+        sem_v(qid);
+    }
+    else
+    {
+        sem_p(qid);
+        printf("parent process is running!\n");
+        //映射共享内存
+        addr=shmat(shm_id,NULL,0);
+        //读出共享内存
+        printf("You wrote:%s\n",addr);
+        //解除共享内存映射
+        shmdt(addr);
+        //删除共享内存
+        shmctl(shm_id,IPC_RMID,NULL);
+
+
+        sem_v(qid);
+        delete_sem(qid);
+
+        
+    }
+
+    return 0;
+}
+```
+
+
+
+
+
+
+
+
+
+
+
+## 3.5 线程
+
+
+
+### 1.线程和进程
+
+进程是资源管理的最小单位，线程是程序执行的最小单位
+
+
+
+### 2.创建线程
+
+POSIX标准的线程库pthread
+
+```c
+#include <pthread.h>
+```
+
+
+
+pthread_create()函数是用于创建一个线程
+
+```c
+int pthread_create(pthread_t *thread, const pthread_attr_t *attr,
+                    void *(*start_routine) (void *), void *arg);
+```
+
+- thread：指向线程标识符的指针。
+- attr：设置线程属性，具体内容在下一小节讲解。
+- start_routine：start_routine是一个函数指针，指向要运行的线程入口，即线程运行时要执行的函数代码。
+- arg：运行线程时传入的参数。
+- 返回值：若线程创建成功，则返回0。若线程创建失败，则返回对应的错误代码。
+
+
+
+### 3.线程属性
+
+使用pthread_attr_init()函数可以初始化线程对象的属性
+
+```c
+int pthread_attr_init(pthread_attr_t *attr);
+```
+
+- attr：指向一个线程属性的指针
+- 返回值：若函数调用成功返回0，否则返回对应的错误代码。
+
+
+
+**销毁对象**
+
+```c
+int pthread_attr_destroy(pthread_attr_t *attr);
+```
+
+- attr：指向一个线程属性的指针
+- 返回值：若函数调用成功返回0，否则返回对应的错误代码。
+
+
+
+**线程的分离状态**
+
+线程是可结合的，或者是可分离的
+
+可结合的线程是能够被其他线程收回其资源和杀死的，在被线程回收之前，资源是不可释放的。
+
+可分离的线程是不能被其他现场回收和杀死的，其资源在终止时自动释放。
+
+进程中的线程可以**调用pthread_join()函数来等待某个线程的终止，获得该线程的终止状态，并收回所占的资源**。 如果对线程的返回状态不感兴趣，可以将rval_ptr设置为NULL。
+
+```c
+int pthread_join(pthread_t tid, void **rval_ptr)；
+```
+
+
+
+**调用pthread_detach()函数将此线程设置为分离状态**，设置为分离状态的线程在线程结束时， 操作系统会自动收回它所占的资源。设置为分离状态的线程，不能再调用pthread_join()等待其结束。
+
+```c
+int pthread_detach(pthread_t tid)；
+```
+
+
+
+想要获取某个线程的分离状态，那么可以通过**pthread_attr_getdetachstate()函数获取**：
+
+```c
+int pthread_attr_getdetachstate(const pthread_attr_t *attr, int *detachstate);
+```
+
+若函数调用成功返回0，否则返回对应的错误代码。
+
+参数说明：
+
+- attr：指向一个线程属性的指针。
+- detachstate：如果值为PTHREAD_CREATE_DETACHED，则表示线程是分离状态， 如果值为PTHREAD_CREATE_JOINABLE则表示线程是结合状态。
+
+
+
+
+
+
+
+**线程栈**
+
+线程栈是非常重要的资源，它可以存放函数形参、局部变量、线程切换现场寄存器等数据。
+
+默认的线程栈大小是1M，线程栈的大小可调
+
+```c
+int pthread_attr_setstacksize(pthread_attr_t *attr, size_t stacksize);
+int pthread_attr_getstacksize(const pthread_attr_t *attr, size_t *stacksize);
+```
+
+
+
+
+
+### 4.线程退出
+
+在线程创建后，系统就开始运行相关的线程函数，在该函数运行完之后，该线程也就退出了， 这是线程的一种隐式退出的方法
+
+退出线程的方法是使用**pthread_exit()函数**，让线程显式退出
+
+**exit()函数的作用是使调用进程终止**，而一个进程往往包含多个线程，因此，在使用exit()之后， 该进程中的所有线程都会被退出
+
+```c
+void pthread_exit(void *retval);
+```
+
+参数说明：
+
+- retval：如果retval不为空，则会将线程的退出值保存到retval中，如果不关心线程的退出值，形参为NULL即可。
+
+
+
+线程种类似于wait()的函数，**线程等待某个线程的退出，并获得他的退出值**。
+
+```c
+int pthread_join(pthread_t tid, void **rval_ptr)；
+```
+
+如果某个线程想要等待另一个线程退出，并且获取它的退出值，那么就可以使用pthread_join()函数完成， 以阻塞的方式等待thread指定的线程结束，当函数返回时，被等待线程的资源将被收回，如果进程已经结束， 那么该函数会立即返回。并且thread指定的线程必须是可结合状态的，该函数执行成功返回0，否则返回对应的错误代码。
+
+参数说明：
+
+- thread: 线程标识符，即线程ID，标识唯一线程。
+- retval: 用户定义的指针，用来存储被等待线程的返回值。
+
+
+
+需要注意的是一个可结合状态的线程所占用的内存仅当有线程对其执行立pthread_join()后才会释放，因此为了避免内存泄漏， **所有线程的终止时，要么已被设为DETACHED，要么使用pthread_join()来回收资源。**
+
+
 
 
 
