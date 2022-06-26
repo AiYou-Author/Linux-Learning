@@ -5378,7 +5378,210 @@ int pthread_join(pthread_t tid, void **rval_ptr)；
 
 
 
+```
+#include <unistd.h>
+#include <fcntl.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <pthread.h>
+
+void *test_thread(void *arg)
+{
+    int num=(unsigned long long)arg;
+    printf("This is test thread,arg is %d\n",num);
+    sleep(5);
+    pthread_exit(NULL);
+}
+
+int main()
+{
+    pthread_t thread;
+    void *thread_return;
+    int res;
+    int arg = 520;
+    
+    printf("create thread\n");
+    //创建线程
+    res = pthread_create(&thread, NULL, test_thread, (void *)(unsigned long long)(arg));
+    if (res != 0)
+    {
+        printf("create thread fail\n");
+        exit(res);
+    }
+
+    printf("create treads success\n");
+    printf("waiting for threads to finish...\n");
+
+    res = pthread_join(thread, &thread_return);
+    if (res != 0)
+    {
+        printf("thread exit fail!\n");
+        exit(res);
+    }
+
+    printf("pthread exit ok!\n");
+
+    return 0;
+}
+```
 
 
 
+
+
+
+
+### 5.线程取消
+
+
+
+
+
+
+
+
+
+
+
+
+
+### 6.线程清理
+
+子线程退出时可能需要执行善后的工作，如释放资源和锁、回滚事务等。
+
+善后的代码不合适写在线程主函数中，一般放在清理函数中。
+
+```
+void pthread cleanup push(void (*routine)(void *)void *arg):
+void pthread cleanup pop(int execute);
+```
+
+清理函数必须成对的书写在同一语句块中。
+
+当线程被取消时，所有注册的清理函数以被推送到堆栈的顺序相反的顺序执行。
+
+当线程通过调用`pthread_exit`终止时，所有清理处理程序都将按照前一点所述执行。（如果线程通过`return`终止，则不调用清理函数。）
+
+当线程使用非零的`execute`参数调用`pthread cleanup_pop`时，将弹出并执行最上面的清理函数。
+
+
+
+
+
+```c
+#include <unistd.h>
+#include <fcntl.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <pthread.h>
+
+void cleanfunc(void *arg)
+{
+    int num = (int)(long)arg;
+    printf("clean pop sleep This is test thread,arg is %d\n", num);
+}
+
+void *mainfunc(void *arg)
+{
+    //注册线程清理函数
+    pthread_cleanup_push(cleanfunc,arg);
+    int num = (int)(long)arg;
+    printf("This is test thread,arg is %d\n", num);
+    sleep(5);
+    printf("sleep This is test thread,arg is %d\n", num);
+    //弹出线程清理函数
+    pthread_cleanup_pop(1);
+    pthread_exit(NULL);
+}
+
+int main()
+{
+    pthread_t thread;
+    int res;
+    int arg = 520;   
+    res = pthread_create(&thread,NULL, mainfunc, (void *)(long)arg);
+    if (res != 0)
+    {
+        printf("线程创建失败！\n");
+    }
+    printf("thread create success!\n");
+    //清理线程
+    int cancelres=pthread_cancel(thread);
+    if(cancelres==0)
+        printf("thread cancel success!\n");
+    //善后线程
+    pthread_join(thread,NULL);
+    return 0;
+}
+```
+
+
+
+
+
+
+
+### 7.向线程发送信号
+
+从外部向进程的发送信号时,信号到达进程,不会中断子线程。
+
+在多线程程序中,捕获信号的代码放在哪都一样,一般放在进程的主函数中。
+
+在多线程程序中,在某个一个线程中调用signal或者sigaction等函数会改变所有线程中的信号处理函数。
+
+主进程向子线程发送信号用pthread_kill函数。
+
+int pthread kill(pthread_t thread, int sig);
+
+在多线程代码中,可以使用sigwait, sigwaitinfo, sigtimedwait.
+
+```c
+#include <unistd.h>
+#include <fcntl.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <pthread.h>
+#include <signal.h>
+
+void signalhandler(int sig)
+{
+    for (int i = 0; i < 30; i++)
+    {
+        printf("signal test is %d\n",i);
+        sleep(1);
+    }
+    
+}
+
+void *mainfunc(void *arg)
+{
+    int num = (int)(long)arg;
+    printf("This is test thread,arg is %d\n", num);
+    for (int i = 0; i < 30; i++)
+    {
+        printf("pthread is %d\n",i);
+        sleep(1);
+    }
+    
+    pthread_exit(NULL);
+}
+
+int main()
+{
+    pthread_t thread;
+    signal(2,signalhandler);
+    int res;
+    int arg = 520;      
+    res = pthread_create(&thread, NULL, mainfunc, (void *)(long)arg);
+    if (res != 0)
+    {
+        printf("线程创建失败！\n");
+    }
+    printf("thread create success!\n");
+    pthread_join(thread,NULL);
+    printf("thread run success!\n");
+    return 0;
+}
+
+```
 
