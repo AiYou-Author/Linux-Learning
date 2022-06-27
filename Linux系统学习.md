@@ -5433,7 +5433,56 @@ int main()
 
 ### 5.线程取消
 
+子线程在运行的过程中， 在主进程或其它线程中可以调用`pthread_cance`l取消它(缺省模式)
 
+```c
+int pthread_cancel(pthread_t thread)
+```
+
+发送终止信号给thread线程，如果成功则返回0，否则为非0值。发送成功并不意味着thread会终止。
+
+子线程被取消后， 在主进程中调用`pthread_jion`， 得到线程的返回状态是`PTHREAD CANCELED`， 即-1。
+
+子线程可以调用`pthread_set cancel state`(PTHREAD_CANCEL_ENABLE 和PTHREAD_CANCEL_DISABLE) 设置对`pthread_cancel`请求的响应方式。
+
+子线程可以调用`pthread_set canceltype`设置线程的取消方式
+
+(PTHREAD CANCEL'ASYNCH ORONO US和PTHREAD CANCEL DEFERRED)子线程中调用`pthread_testcancel`设置取消点。
+
+```c
+#include <unistd.h>
+#include <fcntl.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <pthread.h>
+
+void *mainfunc(void *arg)
+{
+    int num = (int)(long)arg;
+    printf("This is test thread,arg is %d\n", num);
+    sleep(5);
+    printf("This is test thread,arg is %d\n", num);
+    pthread_exit(NULL);
+}
+
+int main()
+{
+    pthread_t thread;
+    int res;
+    int arg = 520;      
+    res = pthread_create(&thread, NULL, mainfunc, (void *)(long)arg);
+    if (res != 0)
+    {
+        printf("线程创建失败！\n");
+    }
+    printf("thread create success!\n");
+    int cancelres=pthread_cancel(thread);
+    if(cancelres==0)
+        printf("thread cancel success!\n");
+    pthread_join(thread,NULL);
+    return 0;
+}
+```
 
 
 
@@ -5451,7 +5500,7 @@ int main()
 
 善后的代码不合适写在线程主函数中，一般放在清理函数中。
 
-```
+```c
 void pthread cleanup push(void (*routine)(void *)void *arg):
 void pthread cleanup pop(int execute);
 ```
@@ -5585,3 +5634,146 @@ int main()
 
 ```
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+## 3.6 GDB工具
+
+
+
+### 1. gdb的安装
+
+```shell
+apt install gdb
+```
+
+
+
+### 2.调试前的准备
+
+​	用gcc编译源程序的时候，编译后的可执行文件不会包含源程序代码，如果您打算编译后的程序可以被调试，编译的时候要加-g的参数，例如：
+
+```shell
+gcc -g -o book113 book113.c
+```
+
+```shell
+gdb book113
+```
+
+
+
+### 3.基本调试命令
+
+| **命令**           | **命令缩写** | **命令说明**                                                 |
+| ------------------ | :----------- | ------------------------------------------------------------ |
+| set args           |              | 设置主程序的参数。例如：./book119 /oracle/c/book1.c /tmp/book1.c设置参数的方法是：gdb book119(gdb) set args /oracle/c/book1.c /tmp/book1.c |
+| break              | b            | 设置断点，b 20 表示在第20行设置断点，可以设置多个断点。      |
+| run                | r            | 开始运行程序, 程序运行到断点的位置会停下来，如果没有遇到断点，程序一直运行下去。 |
+| next               | n            | 执行当前行语句，如果该语句为函数调用，不会进入函数内部执行。 |
+| step               | s            | 执行当前行语句，如果该语句为函数调用，则进入函数执行其中的第一条语句。注意了，如果函数是库函数或第三方提供的函数，用s也是进不去的，因为没有源代码，如果是您自定义的函数，只要有源码就可以进去。 |
+| print              | p            | 显示变量值，例如：p name表示显示变量name的值。               |
+| continue           | c            | 继续程序的运行，直到遇到下一个断点。                         |
+| set var name=value |              | 设置变量的值，假设程序有两个变量：int ii; char name[21];set var ii=10 把ii的值设置为10；set var name="西施" 把name的值设置为"西施"，注意，不是strcpy。 |
+| quit               | q            | 退出gdb环境。                                                |
+
+
+
+
+
+### 4.调试CORE文件
+
+程序挂掉时， 系统缺省不会生成core文件。
+
+1) ulimit-a查看系统参数；
+
+2. ulimit-c unlimit 把core文件的大小设为无限制
+
+   ```shell
+   ulimit-c unlimit
+   ```
+
+3. 运行程序， 生成core文件；
+
+4. gdb 程序名 core文件名。
+
+   ```shell
+   gdb thread_signal core.19356
+   ```
+
+5. 使用gdb ./文件 生成的core文件直接查看段错误的位置
+
+6. 在gdb内使用bt命令可以查看函数的调用栈
+
+
+
+
+
+
+
+
+
+### 5.调试正在运行的文件
+
+可以使正在运行的文件暂停
+
+```
+gdp 程序名 -p pid
+```
+
+在gdb内使用bt命令可以查看函数的调用栈
+
+
+
+
+
+### 6.调试多进程服务程序
+
+调试父进程：set follow-fork-mode parent (缺省)
+
+调试子进程：set follow-fork-mode child 设置调试模式：
+
+set detach-on-fork[on l off] ， 缺省是on，表示调试当前进程的时候，其它的进程继续运行， 如果用off，调试当前进程的时候，身其它的进程被gdb挂起。
+
+查看调试的进程：info inferiors 
+
+切换当前调试的进程：inferior进程id
+
+
+
+
+
+
+
+
+
+### 7.调试多线程服务程序
+
+在gdb中执行：
+
+查看线程：info threads 
+
+切换线程：thread 线程id 
+
+只运行当前线程：set scheduler-locking on 
+
+运行全部的线程：set scheduler-locking off 
+
+指定某线程执行某gdb命令：thread apply 线程id cmd 
+
+全部的线程执行某gdb命令：thread apply all cmd
