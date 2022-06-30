@@ -5382,7 +5382,7 @@ int pthread_join(pthread_t tid, void **rval_ptr)；
 
 
 
-```
+```c++
 #include <unistd.h>
 #include <fcntl.h>
 #include <stdio.h>
@@ -6131,6 +6131,8 @@ int socket(int domain, int type, int protocol);
 
 socket()函数用于创建一个socket描述符（socket descriptor）
 
+返回值：成功则返回一个socket，失败返回-1
+
 1. domain：**参数domain表示该套接字使用的协议族**
 
    对于TCP/IP协议，选择**AFT_INET**足以
@@ -6377,4 +6379,176 @@ int sendto(int s, const void *msg, size_t len, int flags, const struct sockaddr 
 ```
 
 sendto()函数与send函数非常像，但是它会通过 struct sockaddr 指向的 to 结构体指定要发送给哪个远端主机，在to参数中需要指定远端主机的IP地址、端口号等，而tolen参数则是指定to 结构体的字节长度。
+
+
+
+
+
+
+
+### 4.2.11 服务器端和客户端绑定IP地址和端口的细节
+
+```c++
+unsigned long inet_addr(const char* cp);	//字符串和in_addr结构体的转换
+char* inet_ntoa(struct in_addr in);
+
+m_servaddr.sin_addr.s_addr = inet_addr("192.168.149.129");  // 指定ip地址
+```
+
+```c++
+uint32_t htonl(uint32_t _hostlong) //htonl就是把本机字节顺序转化为网络字节顺序
+/*
+    h---host 本地主机
+    to  就是to 了
+    n  ---net 网络的意思
+    l 是 unsigned long
+    long型的0x40写完整为:0x 00 00 00 40，共四个字节，调用htonl后四个字节颠倒顺序，为0x 40 00 00 00。
+*/
+    
+m_servaddr.sin_addr.s_addr = htonl(INADDR_ANY);  // 本主机的任意ip地址
+```
+
+```c++
+uint16_t htons(uint16_t _hostshort);//将一个无符号短整型数值转换为网络字节序
+//计算机的端口数量是65536个，也就是2^16，两个字节
+//简单地说,htons()就是将一个数的高低位互换   (如:12 34 --> 34 12)  
+     
+m_servaddr.sin_port = htons(5000);  // 通信端口
+```
+
+
+
+```c++
+struct hostent* h;
+  if ( (h = gethostbyname(argv[1])) == 0 )   // 客户端指定服务端的ip地址。
+  { 
+      printf("gethostbyname failed.\n"); close(sockfd); 
+      return -1; 
+  }
+```
+
+```c++
+servaddr.sin_port = htons(atoi(argv[2]));//客户端程序指定服务端的通信端口
+```
+
+
+
+
+
+### 4.2.12 gethostbyname函数 把ip地址或域名转换为hostent 结构体表达的地址。
+
+```c++
+struct hostent *gethostbyname(const char *name);
+```
+
+参数name，域名或者主机名，例如"192.168.1.3"、"www.freecplus.net"等。
+
+返回值：如果成功，返回一个hostent结构指针，失败返回NULL。
+
+gethostbyname只用于客户端。
+
+gethostbyname只是把字符串的ip地址转换为结构体的ip地址，只要地址格式没错，一般不会返回错误。失败时不会设置errno的值。
+
+
+
+
+
+
+
+
+
+### 服务器端程序
+
+```c++
+#include <stdio.h>
+#include <string.h>
+#include <unistd.h>
+#include <stdlib.h>
+#include <netdb.h>
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <arpa/inet.h>
+#include <iostream>
+using namespace std;
+
+int main(int argc, char *argv[])
+{
+    if (argc != 2)
+    {
+        cout << "Using:./server ip port\nExample:./server 5005\n\n";
+        return -1;
+    }
+
+    //第一步：创建服务端socket
+    int listenfd;
+    listenfd = socket(AF_INET, SOCK_STREAM, 0);
+    if (listenfd == -1)
+    {
+        cerr << "socket";
+        return -1;
+    }
+
+    //第二步：服务器端将通信的地址和端口绑定到socket
+    struct sockaddr_in serveraddr;                  // 服务端地址信息的数据结构。
+    serveraddr.sin_family = AF_INET;                // 协议族，在socket编程中只能是AF_INET。
+    serveraddr.sin_addr.s_addr = htonl(INADDR_ANY); // 任意ip地址。
+    serveraddr.sin_port = htons(atoi(argv[1]));     //指定通信端口
+    if (bind(listenfd, (struct sockaddr *)&serveraddr, sizeof(serveraddr)) != 0)
+    {
+        cerr << "bind";
+        return -1;
+    }
+
+    //第三步：将socket设置为监听模式
+    if (listen(listenfd, 5) != 0)
+    {
+        cerr << "bind";
+        close(listenfd);
+        return -1;
+    }
+
+    //第四步：接受客户端的链接
+    int sockfd;
+    struct sockaddr_in clientaddr;            //客户端的地址信息
+    int addrlen = sizeof(struct sockaddr_in); //客户端地址的大小
+    sockfd=accept(listenfd,(struct sockaddr*)&clientaddr,(socklen_t *)&addrlen);
+    cout <<"客户端"<<inet_ntoa(clientaddr.sin_addr)<<"已链接"<<endl;
+
+    //第五步：与客户端通信，接收客户端发过来的报文后。
+    char buffer[1024];
+    while (1)
+    {
+        int iret;
+        // 接收客户端的回应报文。
+        memset(buffer, 0, sizeof(buffer));
+        iret = recv(sockfd, buffer, sizeof(buffer), 0);
+        if (iret <= 0)
+        {
+            cout << "iret=" << iret << endl;
+            break;
+        }
+        cout << "recv:" << buffer << endl;
+
+        // 向客户端发送报文
+        cout << "input: " << flush;
+        cin.getline(buffer, 1024);
+        if (strcmp(buffer, "quit") == 0)
+            break;
+        // 向服务端发送请求报文。
+        iret = send(sockfd, buffer, strlen(buffer), 0);
+        if (iret <= 0)
+        {
+            cerr << "send" << endl;
+            break;
+        }
+
+        
+    }
+
+    // 第六步：关闭socket，释放资源。
+    close(sockfd);
+    close(listenfd);
+    return 0;
+}
+```
 
