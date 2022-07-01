@@ -6268,7 +6268,7 @@ int accept(int s, struct sockaddr *addr, socklen_t *addrlen);
 
 
 
-### 4.2.7 read() 
+### 4.2.7 read() ecv()
 
 ```c++
     ssize_t read(int fd, void *buf, size_t count);
@@ -6551,4 +6551,173 @@ int main(int argc, char *argv[])
     return 0;
 }
 ```
+
+
+
+### 客户端程序
+
+```c++
+/*
+ * 程序名：client.cpp，此程序用于演示socket的客户端
+ * 作者：C语言技术网(www.freecplus.net) 日期：20190525
+ */
+#include <stdio.h>
+#include <string.h>
+#include <unistd.h>
+#include <stdlib.h>
+#include <netdb.h>
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <arpa/inet.h>
+#include <iostream>
+using namespace std;
+
+int main(int argc, char *argv[])
+{
+    if (argc != 3)
+    {
+        printf("Using:./client ip port\nExample:./client 127.0.0.1 5005\n\n");
+        return -1;
+    }
+
+    // 第1步：创建客户端的socket。
+    int sockfd;
+    if ((sockfd = socket(AF_INET, SOCK_STREAM, 0)) == -1)
+    {
+        perror("socket");
+        return -1;
+    }
+
+    // 第2步：向服务器发起连接请求。
+    struct hostent *h;
+    if ((h = gethostbyname(argv[1])) == 0) // 指定服务端的ip地址。
+    {
+        printf("gethostbyname failed.\n");
+        close(sockfd);
+        return -1;
+    }
+    struct sockaddr_in servaddr;
+    memset(&servaddr, 0, sizeof(servaddr));
+    servaddr.sin_family = AF_INET;
+    servaddr.sin_port = htons(atoi(argv[2])); // 指定服务端的通信端口。
+    memcpy(&servaddr.sin_addr, h->h_addr, h->h_length);
+    if (connect(sockfd, (struct sockaddr *)&servaddr, sizeof(servaddr)) != 0) // 向服务端发起连接清求。
+    {
+        perror("connect");
+        close(sockfd);
+        return -1;
+    }
+
+    char buffer[1024];
+
+    // 第3步：与服务端通信，发送一个报文后等待回复，然后再发下一个报文。
+    // for (int ii = 0; ii < 3; ii++)
+    // {
+    //     int iret;
+    //     memset(buffer, 0, sizeof(buffer));
+    //     sprintf(buffer, "这是第%d个超级女生，编号%03d。", ii + 1, ii + 1);
+    //     if ((iret = send(sockfd, buffer, strlen(buffer), 0)) <= 0) // 向服务端发送请求报文。
+    //     {
+    //         perror("send");
+    //         break;
+    //     }
+    //     printf("发送：%s\n", buffer);
+
+    //     memset(buffer, 0, sizeof(buffer));
+    //     if ((iret = recv(sockfd, buffer, sizeof(buffer), 0)) <= 0) // 接收服务端的回应报文。
+    //     {
+    //         printf("iret=%d\n", iret);
+    //         break;
+    //     }
+    //     printf("接收：%s\n", buffer);
+    // }
+
+    while (1)
+    {
+        int iret;
+        cout << "input: " << flush;
+        cin.getline(buffer, 1024);
+        if (strcmp(buffer, "quit")==0)
+            break;
+        // 向服务端发送请求报文。
+        iret = send(sockfd, buffer, strlen(buffer), 0);
+        if (iret <= 0)
+        {
+            cerr << "send" << endl;
+            break;
+        }
+
+        // 接收服务端的回应报文。
+        memset(buffer, 0, sizeof(buffer));
+        iret = recv(sockfd, buffer, sizeof(buffer), 0);
+        if (iret <= 0)
+        {
+            cout << "iret=" << iret << endl;
+            break;
+        }
+        cout << "recv:" << buffer << endl;
+    }
+
+    // 第4步：关闭socket，释放资源。
+    close(sockfd);
+}
+```
+
+
+
+
+
+
+
+
+
+
+
+## 4.3 
+
+
+
+
+
+### 同步I/O
+
+在一个线程中，CPU执行代码的速度极快，然而，一旦遇到I/O操作，如读写文件、发送网络数据时，就需要等待 I/O 操作完成，才能继续进行下一步操作，这种情况称为**同步 I/O。**
+
+可以使用 **多线程或者多进程** 来并发执行代码，当某个线程/进程被挂起后，不会影响其他线程或进程。
+
+
+
+
+
+### 异步I/O
+
+当程序需要对I/O进行操作时，它只发出I/O操作的指令，并不等待I/O操作的结果，然后就去执行其他代码了。一段时间后，当I/O返回结果时，再通知CPU进行处理。这样子用户空间中的程序不需要等待内核空间中的 I/O 完成实际操作，就可执行其他任务，提高CPU的利用率。
+
+**简单来说就是，用户不需要等待内核完成实际对io的读写操作就直接返回了。**
+
+
+
+
+
+### 阻塞I/O
+
+![socket_io001](https://s2.loli.net/2022/06/30/O75WpYkyJmwiVg2.png)
+
+阻塞I/O的特点就是在IO执行的两个阶段（用户空间与内核空间）都被阻塞
+
+
+
+### 非阻塞I/O
+
+![socket_io002](https://s2.loli.net/2022/06/30/QC3s5PZ8oFivtjN.png)
+
+当用户进程调用 `read()/recvfrom()` 等系统调用函数时，如果内核空间中的数据还没有准备好，那么它并不会阻塞用户进程，而是立刻返回一个error。当内核空间的数据准备好了，它就会将数据从内核空间中拷贝到用户空间，此时用户进程也就得到了数据。
+
+非阻塞I/O的特点是用户进程需要不断的 **主动询问** 内核空间的数据准备好了没有。
+
+
+
+
+
+
 
